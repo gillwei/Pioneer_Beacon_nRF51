@@ -92,10 +92,8 @@
 
 static uint16_t                          m_conn_handle = BLE_CONN_HANDLE_INVALID;   /**< Handle of the current connection. */
 static ble_pbs_t                         m_pbs;                                     /**< Structure used to identify the PBS. */
-
 static sensorsim_cfg_t                   m_drhc_sim_cfg;                         
 static sensorsim_state_t                 m_drhc_sim_state;
-
 APP_TIMER_DEF(m_data_header_report_id);  
 
 #define APP_ADV_FAST_INTERVAL           0x0028                                      /**< Fast advertising interval (in units of 0.625 ms. This value corresponds to 25 ms.). */
@@ -850,6 +848,7 @@ int main(void)
 		
     // Initialize.
 		uart_config();
+	printf("test1\r\n");
     app_trace_init();
     timers_init();
     buttons_leds_init(&erase_bonds);
