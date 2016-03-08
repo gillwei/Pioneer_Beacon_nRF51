@@ -52,7 +52,7 @@
 #define CENTRAL_LINK_COUNT               0                                          /**<number of central links used by the application. When changing this number remember to adjust the RAM settings*/
 #define PERIPHERAL_LINK_COUNT            1                                          /**<number of peripheral links used by the application. When changing this number remember to adjust the RAM settings*/
 
-#define DEVICE_NAME                      "Gill_BLE"                               /**< Name of device. Will be included in the advertising data. */
+#define DEVICE_NAME                      "BLE_PBS"                               /**< Name of device. Will be included in the advertising data. */
 
 
 // Gill add
@@ -133,27 +133,31 @@ void assert_nrf_callback(uint16_t line_num, const uint8_t * p_file_name)
     app_error_handler(DEAD_BEEF, line_num, p_file_name);
 }
 
+void flash_write_simulation(void)
+{
+	float cal_acc_test[3];	
+		cal_acc_test[0] = 12;
+		cal_acc_test[1] = 25;
+		cal_acc_test[2] = 30;			
+		int w_cnt = 600 * 3;
+		flash_data_set_init();	
+		while(w_cnt--) {
+				if (w_cnt == 1000) {
+					flash_data_set_write(NULL, cal_acc_test, 1, w_cnt);
+				} else if (w_cnt == 500) {
+					flash_data_set_write(NULL, cal_acc_test, 2, w_cnt);
+				}	else {
+					flash_data_set_write(NULL, cal_acc_test,0, 0);
+				}	
+		}
+		nrf_delay_ms(100);
+		pktCounter = 125;
+		m_pbs.esc_s.number_of_event = 1;
+		uint8_t esc_sim_data[3] = {0,0,1};
+		ble_pbs_esc_update(&m_pbs, esc_sim_data);
+		printf("flash write simulation\r\n");
+}
 
-/**@brief Function for performing battery measurement and updating the Battery Level characteristic
- *        in Battery Service.
- */
-//static void ble_drhc_update(void)
-//{
-//    uint32_t err_code;
-//    uint8_t  drhc_sim_data;
-
-//    drhc_sim_data = (uint8_t)sensorsim_measure(&m_drhc_sim_state, &m_drhc_sim_cfg);
-
-//    err_code = ble_pbs_drhc_update(&m_pbs, drhc_sim_data);
-//    if ((err_code != NRF_SUCCESS) &&
-//        (err_code != NRF_ERROR_INVALID_STATE) &&
-//        (err_code != BLE_ERROR_NO_TX_PACKETS) &&
-//        (err_code != BLE_ERROR_GATTS_SYS_ATTR_MISSING)
-//        )
-//    {
-//        APP_ERROR_HANDLER(err_code);
-//    }
-//}
 
 /**@brief Function for handling the Battery measurement timer timeout.
  *
@@ -170,30 +174,8 @@ static void dhrc_timeout_handler(void * p_context)
 		// Start flash write simulation
 	if (pktCounter == 0 && esc_notify_flag)
 	{
-		float cal_acc_test[3];	
-		cal_acc_test[0] = 12;
-		cal_acc_test[1] = 25;
-		cal_acc_test[2] = 30;			
-		int w_cnt = 600 * 3;
-		flash_data_set_init();	
-		while(w_cnt--) {
-				if (w_cnt == 1000) {
-					flash_data_set_write(NULL, cal_acc_test, 1, w_cnt);
-				} else if (w_cnt == 500) {
-					flash_data_set_write(NULL, cal_acc_test, 2, w_cnt);
-				}	else {
-					flash_data_set_write(NULL, cal_acc_test,0, 0);
-				}	
-		}
-		nrf_delay_ms(20);
-		pktCounter = 125;
-		m_pbs.esc_s.number_of_event = 1;
-		uint8_t esc_sim_data[3] = {0,0,1};
-		ble_pbs_esc_update(&m_pbs, esc_sim_data);
-		printf("flash write simulation\r\n");
+		flash_write_simulation();
 	}
-	
-	
 	// Simulator flash read
 		uint32_t r_xy;
 		uint32_t r_z;
@@ -211,6 +193,8 @@ static void dhrc_timeout_handler(void * p_context)
 		uint8_t pktNum=0;
 		if (pktCounter > 0 && cdrc_notify_flag== true && start_dw_flag)
 		{
+			if (pktCounter == 125) // The first data packet
+				nrf_delay_ms(200);
 			printf("pktCounter : %i ",pktCounter);
 			pktCounter--;
 
@@ -221,16 +205,6 @@ static void dhrc_timeout_handler(void * p_context)
 				data_x[i] = (uint16_t)((r_xy&0xFFFF0000)>>16);
 				data_y[i] = (uint16_t)(r_xy&0xFFFF);
 				data_z[i] = (uint16_t)(r_z&0xFFFF);
-				
-//				if (ret < 0)	
-//					printf("ret error:0\r\n");
-//				else
-//					printf("ret: %i read x: %f read y: %f read z: %f\n\r", ret,(float)((r_xy&0xFFFF0000)>>16)/100-16,(float)(r_xy&0x0000FFFF)/100-16, (float)r_z/100-16);
-				
-//				printf("ret: %i data_X:%04X ",ret,data_x[i]);
-//				printf("data_y:%04X ",data_y[i]);
-//					printf("data_z:%04X\r\n",data_z[i]);
-				//nrf_delay_ms(10);
 			}
 			pktNum=0;
 			// assign 4 read data value to cdrc data packet
@@ -255,26 +229,7 @@ static void dhrc_timeout_handler(void * p_context)
 			printf("\r\n");
 			err_code = ble_pbs_cdrc_update(&m_pbs, p_cal_encoded_buffer);
 		}
-			
-		
-//	// Check Download control point
-//		uint32_t err_code = NRF_SUCCESS;
-//    ble_gatts_value_t gatts_value;
-//		memset(&gatts_value, 0, sizeof(gatts_value));
-//		gatts_value.len     = 1;
-//		gatts_value.offset  = 0;
-//		//gatts_value.p_value = &dhrc_data;
-//		err_code = sd_ble_gatts_value_get(m_pbs.conn_handle,
-//																			m_pbs.esc_handles.value_handle,
-//																			&gatts_value);
-//	printf("get value err:%04X, value:%02X\r\n",err_code,gatts_value.p_value[0]);
-//	
-//	if (m_pbs.esc_s.download_control_point == 0x01)
-//    ble_drhc_update();
-//	else 
-//	{
-//		printf("download_control_point:%d\r\n",m_pbs.esc_s.download_control_point);
-//	}
+
 }
 
 
@@ -353,15 +308,19 @@ static void services_init(void)
 		m_pbs.bsc_s.flag = 0x00;
 		m_pbs.bsc_s.sampling_frequency = 50;
 		m_pbs.bsc_s.ble_output_power = -8;
-		m_pbs.bsc_s.small_accident_level_x = 70;
-		m_pbs.bsc_s.small_accident_level_y = 60;
-		m_pbs.bsc_s.medium_accident_level = 40;
-		m_pbs.bsc_s.high_accident_level = 150;
-		m_pbs.bsc_s.hard_accelaration_level = -30;
-		m_pbs.bsc_s.hard_braking_level = 35;
-		m_pbs.bsc_s.hard_steering_level_left = 35;
-		m_pbs.bsc_s.hard_steering_level_right= 35;
 		m_pbs.bsc_s.current_utc = 0;
+		m_pbs.bsc_s.ambient_sensor_value = 0;
+		m_pbs.bsc_s.acc_voltage = 0;
+		
+		m_pbs.tsc_s.small_accident_level_x = 70;
+		m_pbs.tsc_s.small_accident_level_y = 60;
+		m_pbs.tsc_s.medium_accident_level = 60;
+		m_pbs.tsc_s.high_accident_level = 100;
+		m_pbs.tsc_s.hard_accelaration_level = 30;
+		m_pbs.tsc_s.hard_braking_level = 35;
+		m_pbs.tsc_s.hard_steering_level_left = 35;
+		m_pbs.tsc_s.hard_steering_level_right= 35;
+
 		// Event Storage Characteristic default value
 		m_pbs.esc_s.download_control_point = 0x00;
 		m_pbs.esc_s.number_of_event = 0x00;
@@ -383,6 +342,13 @@ static void services_init(void)
 		uint8_t default_rdrc_data[18] = {0};
 		m_pbs.rdrc_s.data_payload = default_rdrc_data;
 		
+		m_pbs.bdc_s.advertising_period = 64;
+		m_pbs.bdc_s.advertising_duration = 4;
+		m_pbs.bdc_s.advertising_interval = 100;
+		
+		m_pbs.bdrc_s.advertising_interval = 100;
+		m_pbs.bdrc_s.advertising_time = 5;
+		m_pbs.bdrc_s.button_status = 0;
     err_code = ble_pbs_init(&m_pbs);
     APP_ERROR_CHECK(err_code);
 
@@ -848,7 +814,6 @@ int main(void)
 		
     // Initialize.
 		uart_config();
-	printf("test1\r\n");
     app_trace_init();
     timers_init();
     buttons_leds_init(&erase_bonds);
@@ -859,35 +824,6 @@ int main(void)
     services_init();
     sensor_simulator_init();
     conn_params_init();
-	
-//		// Start flash write/read simulation
-//		float cal_acc_test[3];	
-//		cal_acc_test[0] = 12;
-//		cal_acc_test[1] = 25;
-//		cal_acc_test[2] = 30;			
-//		int w_cnt = 600 * 3;
-//		flash_data_set_init();	
-//		while(w_cnt--) {
-//				if (w_cnt == 1000) {
-//					flash_data_set_write(NULL, cal_acc_test, 1, w_cnt);
-//				} else if (w_cnt == 500) {
-//					flash_data_set_write(NULL, cal_acc_test, 2, w_cnt);
-//				}	else {
-//					flash_data_set_write(NULL, cal_acc_test,0, 0);
-//				}	
-//		}	
-		
-		// test read, in timer
-//		uint32_t r_xy;
-//		uint32_t r_z;
-//		uint8_t r_event_ID;
-//		uint32_t r_UTC;
-//		int ret;
-//		ret=flash_data_set_read(NULL, NULL, &r_xy, &r_z, &r_event_ID, &r_UTC);
-//		if (ret < 0)	
-//			printf("ret error:0\r\n");
-//		else
-//			printf("ret: %i read x: %f read y: %f read z: %f read_eventID: %i read UTC: %u \n\r", ret,(float)((r_xy&0xFFFF0000)>>16)/100-16,(float)(r_xy&0x0000FFFF)/100-16, (float)r_z/100-16, r_event_ID, r_UTC);
 
 //		//tx power set test
 //		uint32_t tx_power = 4;

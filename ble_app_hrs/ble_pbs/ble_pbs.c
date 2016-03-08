@@ -35,21 +35,27 @@
 #include "app_util.h"
 
 //15422fe0-bce5-11e5-a837-0800200c9a66
-#define PBS_UUID_BASE {0x66, 0x9A, 0x0C, 0x20, 0x00, 0x08, 0x37, 0xA8, 0xE5, 0x11, 0xE5, 0xBC, 0xE0, 0x2F, 0x42, 0x15}
+#define PBS_UUID_BASE 										 {0x66,0x9A,0x0C,0x20,0x00,0x08,0x37,0xA8,0xE5,0x11,0xE5,0xBC,0xE0,0x2F,0x42,0x15}
 #define PBS_SERVICE_SHORT_UUID 										0x2FE0
 #define PBS_BEACON_SETTING_CHAR_SHORT_UUID 				0x2FE1
 #define PBS_EVENT_STORAGE_CHAR_SHORT_UUID 				0x2FE2
 #define PBS_DATA_REPORT_HEADER_CHAR_SHORT_UUID 		0x2FE3
 #define PBS_CAL_DATA_REPORT_CHAR_SHORT_UUID 			0x2FE4
 #define PBS_RAW_DATA_REPORT_CHAR_SHORT_UUID 			0x2FE5
+#define PBS_THRESHOLD_SETTING_CHAR_SHORT_UUID			0X2FE6
 
-#define BSC_ALLDATA_LENGTH														19
+#define PBS_BOARDING_DETECTION_REPORT_UUID {0x3C,0x81,0x9F,0x55,0xE1,0x57,0x4A,0xD3,0x83,0x84,0x89,0xB4,0xC8,0x3A,0xAC,0xC8}
+#define PBS_BUTTON_DATA_REPORT_UUID 			 {0x15,0xF1,0xE4,0x09,0x7F,0x4A,0x45,0xC7,0xAC,0x19,0x8B,0x98,0x1E,0x1C,0x72,0xBA}
+#define TSC_ALLDATA_LENGTH														17
+#define BSC_ALLDATA_LENGTH														11
 #define ESC_ALLDATA_LENGTH														 3
 #define DRHC_ALLDATA_LENGTH														 9
-#define CDRC_ALLDATA_MIN_LENGTH												 3
+#define CDRC_ALLDATA_MIN_LENGTH												 3 // NOT USED
 #define CDRC_ALLDATA_MAX_LENGTH												20
-#define RDRC_ALLDATA_MIN_LENGTH												 3
+#define RDRC_ALLDATA_MIN_LENGTH												 3 // NOT USED
 #define RDRC_ALLDATA_MAX_LENGTH												20
+#define BDC_ALLDATA_LENGTH                             3
+#define BDRC_ALLDATA_LENGTH                            3
 
 #define PBS_DEBUG																			 1
 
@@ -61,31 +67,40 @@ static uint16_t                 service_handle;
 //static ble_gatts_char_handles_t raw_data_report_handles;
 
 bool esc_notify_flag = false;
-bool esc_write_flag;
-bool start_dw_flag;
-bool drhc_notify_flag;
-bool cdrc_notify_flag;
-bool rdrc_notify_flag;
+bool esc_write_flag = false;
+bool start_dw_flag = false;
+bool drhc_notify_flag = false;
+bool cdrc_notify_flag = false;
+bool rdrc_notify_flag = false;
 
 // Encode All Characteristics' Data
+
+static void tsc_data_encode(uint8_t * p_encoded_buffer, const tsc_t * p_tsc)
+{
+		uint8_t len = 0;
+	p_encoded_buffer[len++] = p_tsc->flag;
+		len += uint16_encode(p_tsc->small_accident_level_x, &p_encoded_buffer[len]);
+		len += uint16_encode(p_tsc->small_accident_level_y, &p_encoded_buffer[len]);
+		len += uint16_encode(p_tsc->medium_accident_level, &p_encoded_buffer[len]);
+		len += uint16_encode(p_tsc->high_accident_level, &p_encoded_buffer[len]);
+		len += uint16_encode(p_tsc->hard_accelaration_level, &p_encoded_buffer[len]);
+		len += uint16_encode(p_tsc->hard_braking_level, &p_encoded_buffer[len]);
+		len += uint16_encode(p_tsc->hard_steering_level_left, &p_encoded_buffer[len]);
+		len += uint16_encode(p_tsc->hard_steering_level_right, &p_encoded_buffer[len]);
+}
 static void bsc_data_encode(uint8_t * p_encoded_buffer, const bsc_t * p_bsc)
 {
 		uint8_t len = 0;
 		APP_ERROR_CHECK_BOOL(p_bsc != NULL);
 		APP_ERROR_CHECK_BOOL(p_encoded_buffer != NULL);
 		p_encoded_buffer[len++] = p_bsc->flag;
-		p_encoded_buffer[len++] = p_bsc->sampling_frequency;
-		len += uint16_encode(p_bsc->ble_output_power, &p_encoded_buffer[len]);
-		p_encoded_buffer[len++] = p_bsc->small_accident_level_x;
-		p_encoded_buffer[len++] = p_bsc->small_accident_level_y;
-		len += uint16_encode(p_bsc->medium_accident_level, &p_encoded_buffer[len]);
-		len += uint16_encode(p_bsc->high_accident_level, &p_encoded_buffer[len]);
-		len += uint16_encode(p_bsc->hard_accelaration_level, &p_encoded_buffer[len]);
-		len += uint16_encode(p_bsc->hard_braking_level, &p_encoded_buffer[len]);
-		p_encoded_buffer[len++] = p_bsc->hard_steering_level_left;
-		p_encoded_buffer[len++] = p_bsc->hard_steering_level_right;
+	len += uint16_encode(p_bsc->sampling_frequency, &p_encoded_buffer[len]);
+	len += uint16_encode(p_bsc->ambient_sensor_value, &p_encoded_buffer[len]);
+	len += uint16_encode(p_bsc->acc_voltage, &p_encoded_buffer[len]);
+	len += uint16_encode(p_bsc->ble_output_power, &p_encoded_buffer[len]);
 		len += uint32_encode(p_bsc->current_utc, &p_encoded_buffer[len]);
 }
+
 static void esc_data_encode(uint8_t * p_encoded_buffer, const esc_t * p_esc)
 {
 		uint8_t len = 0;
@@ -125,6 +140,25 @@ static void rdrc_data_encode(uint8_t * p_encoded_buffer, const rdrc_t * p_rdrc)
 		p_encoded_buffer[len++] = p_rdrc->data_packet_length;
 	for (int i=0;i<p_rdrc->data_packet_length;i++)
 		p_encoded_buffer[len++] = p_rdrc->data_payload[i];
+}
+static void bdc_data_encode(uint8_t * p_encoded_buffer, const bdc_t * p_bdc)
+{
+		uint8_t len = 0;
+		APP_ERROR_CHECK_BOOL(p_bdc != NULL);
+		APP_ERROR_CHECK_BOOL(p_encoded_buffer != NULL);
+		p_encoded_buffer[len++] = p_bdc->advertising_period;
+		p_encoded_buffer[len++] = p_bdc->advertising_duration;
+		p_encoded_buffer[len++] = p_bdc->advertising_interval;
+}
+static void bdrc_data_encode(uint8_t * p_encoded_buffer, const bdrc_t * p_bdrc)
+{
+		uint8_t len = 0;
+		APP_ERROR_CHECK_BOOL(p_bdrc != NULL);
+		APP_ERROR_CHECK_BOOL(p_encoded_buffer != NULL);
+		p_encoded_buffer[len++] = p_bdrc->advertising_time;
+		p_encoded_buffer[len++] = p_bdrc->advertising_interval;
+		p_encoded_buffer[len++] = p_bdrc->button_status;
+		
 }
 
 /**@brief Function for adding the Characteristic.
@@ -334,10 +368,12 @@ static void on_write(ble_pbs_t * p_pbs, ble_evt_t * p_ble_evt)
 {
 		
 	// Check if BSC's flag been writen
+	uint16_t tempHandle = p_ble_evt->evt.gatts_evt.params.write.handle;
+	uint8_t *tempData = p_ble_evt->evt.gatts_evt.params.write.data;
 #if PBS_DEBUG
-					uint16_t tempHandle = p_ble_evt->evt.gatts_evt.params.write.handle;
+					
 					printf("handle:%04X\r\n",tempHandle);
-						uint8_t *tempData = p_ble_evt->evt.gatts_evt.params.write.data;
+						
 					//printf("data length:%d\r\n",sizeof(ble_gatts_evt_write_t)); //26
 						printf("data[0][1]:%02X,%02X\r\n",tempData[0],tempData[1]);
 #endif
@@ -345,8 +381,9 @@ static void on_write(ble_pbs_t * p_pbs, ble_evt_t * p_ble_evt)
 uint32_t error_code;
 
 ble_gatts_evt_write_t * p_evt_write = &p_ble_evt->evt.gatts_evt.params.write;
-		if (tempHandle == 0x000D) // write to esc
+		if (tempHandle == p_pbs->esc_handles.value_handle) // write to esc
 		{	
+			printf("write to esc\r\n");
 			// start download event data
 			if (p_evt_write->data[0] == 0x01 && drhc_notify_flag)
 			{
@@ -367,19 +404,16 @@ ble_gatts_evt_write_t * p_evt_write = &p_ble_evt->evt.gatts_evt.params.write;
 #endif
 				}
 		}	
-		if (tempHandle == 0x0011)
+		if ((tempHandle == p_pbs->drhc_handles.cccd_handle) && (p_evt_write->len == 2))
     {
-        if ((p_evt_write->handle == p_pbs->drhc_handles.cccd_handle) && (p_evt_write->len == 2))
-				{
 					drhc_notify_flag = !drhc_notify_flag;
 #if PBS_DEBUG
 					printf("drhc_notify_flag:%d\r\n",drhc_notify_flag);
 #endif
-				}
+				
 		}	
-		if (tempHandle == 0x0014)
+		if ((tempHandle == p_pbs->cdrc_handles.cccd_handle) && (p_evt_write->len == 2))
     {
-        if ((p_evt_write->handle == p_pbs->cdrc_handles.cccd_handle) && (p_evt_write->len == 2))
 					cdrc_notify_flag = !cdrc_notify_flag;
 #if PBS_DEBUG
 					printf("cdrc_notify_flag:%d\r\n",cdrc_notify_flag);
@@ -423,6 +457,7 @@ uint32_t ble_pbs_init(ble_pbs_t * p_pbs)
 		uint32_t   char_err_code;
 		ble_uuid_t service_uuid;
 		ble_uuid_t char_uuid_temp;
+		ble_uuid_t char_uuid_vendor;
 		// Add service
 		//BLE_UUID_BLE_ASSIGN(service_uuid, BLE_UUID_PIONEER_BEACON_SERVICE); // For SIG UUID
 
@@ -463,12 +498,31 @@ uint32_t ble_pbs_init(ble_pbs_t * p_pbs)
     char_md_temp.p_sccd_md        = NULL;
 	
 		//p_pbs->bsc_s.flag = 0x01;  // Can not assign characteristic value here, show read-only variable can not assign
+		
+		// Threshold Setting Characteristic
+		char_uuid_temp.uuid = PBS_THRESHOLD_SETTING_CHAR_SHORT_UUID;
+		uint8_t encoded_tsc_data [TSC_ALLDATA_LENGTH];
+		tsc_data_encode(encoded_tsc_data, &p_pbs->tsc_s);
+		char_md_temp.char_props.read  = 1;
+		char_md_temp.char_props.write = 1;
+		char_err_code = pbs_char_add(char_md_temp,
+														char_uuid_temp,
+														encoded_tsc_data,
+														TSC_ALLDATA_LENGTH,
+														&p_pbs->pbs_attr_md,
+														&p_pbs->bsc_handles);
+#if PBS_DEBUG
+		printf("tsc_add:%d\r\n",char_err_code);
+#endif	
+		
+		
 		// Beacon Setting Characteristic
 		char_uuid_temp.uuid = PBS_BEACON_SETTING_CHAR_SHORT_UUID;
 		uint8_t encoded_bsc_data [BSC_ALLDATA_LENGTH];
 		bsc_data_encode(encoded_bsc_data, &p_pbs->bsc_s);
 		char_md_temp.char_props.read  = 1;
 		char_md_temp.char_props.write = 1;
+		char_md_temp.char_props.indicate = 1;
 		char_err_code = pbs_char_add(char_md_temp,
 														char_uuid_temp,
 														encoded_bsc_data,
@@ -553,8 +607,47 @@ uint32_t ble_pbs_init(ble_pbs_t * p_pbs)
 		rdrc_notify_flag = false;
 #if PBS_DEBUG
 		printf("rdrc_add:%d\r\n",char_err_code);
+#endif				
+// Boarding Detection Report Characteristic
+		ble_uuid128_t bdc_long_uuid = PBS_BOARDING_DETECTION_REPORT_UUID;  // It's invert added from the array sequence, uint8_t [16] array
+		err_code = sd_ble_uuid_vs_add(&bdc_long_uuid, &char_uuid_vendor.type); // add to Nordic VS UUID table
+		printf("bdc_long_uuid_vs_add:%04X\r\n",err_code);
+		char_uuid_vendor.uuid = 0x9F55;
+		uint8_t encoded_bdc_data [BDC_ALLDATA_LENGTH];
+		bdc_data_encode(encoded_bdc_data, &p_pbs->bdc_s);
+		char_md_temp.char_props.read  = 1;
+		char_md_temp.char_props.write = 1;
+		char_md_temp.char_props.indicate = 0;
+		char_md_temp.p_cccd_md = &cccd_md;
+		char_err_code = pbs_char_add(char_md_temp,
+														char_uuid_vendor,
+														encoded_bdc_data,
+														BDC_ALLDATA_LENGTH,
+														&p_pbs->pbs_attr_md,
+														&p_pbs->bdc_handles);
+#if PBS_DEBUG
+		printf("bdc_add:%d\r\n",char_err_code);
 #endif						
-
+// Button Data Report Characteristic
+		ble_uuid128_t bdrc_long_uuid = PBS_BUTTON_DATA_REPORT_UUID;  // It's invert added from the array sequence, uint8_t [16] array
+		err_code = sd_ble_uuid_vs_add(&bdrc_long_uuid, &char_uuid_vendor.type); // add to Nordic VS UUID table
+		printf("bdrc_long_uuid_vs_add:%04X\r\n",err_code);
+		char_uuid_vendor.uuid = 0xE409;
+		uint8_t encoded_bdrc_data [BDRC_ALLDATA_LENGTH];
+		bdrc_data_encode(encoded_bdrc_data, &p_pbs->bdrc_s);
+		char_md_temp.char_props.read  = 1;
+		char_md_temp.char_props.write = 1;
+		char_md_temp.char_props.indicate = 1;
+		char_md_temp.p_cccd_md = &cccd_md;
+		char_err_code = pbs_char_add(char_md_temp,
+														char_uuid_vendor,
+														encoded_bdc_data,
+														BDRC_ALLDATA_LENGTH,
+														&p_pbs->pbs_attr_md,
+														&p_pbs->bdc_handles);
+#if PBS_DEBUG
+		printf("bdrc_add:%d\r\n",char_err_code);
+#endif		
 	return NRF_SUCCESS;
 }
 

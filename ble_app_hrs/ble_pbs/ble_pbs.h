@@ -32,26 +32,32 @@
 #include <stdint.h>
 #include "ble_srv_common.h"
 
-//bool cdrc_notify_flag;
-//#define ESC_ALLDATA_LENGTH														 3
+typedef struct
+{
+	// Value Update Flag
+	uint8_t flag;
+	// Value Setting 
+	int16_t sampling_frequency;
+	int16_t ambient_sensor_value;
+	int16_t acc_voltage;
+	int16_t ble_output_power;
+	uint32_t current_utc;
+}bsc_t;
 
 typedef struct
 {
-	// Value Exisence Flag
+	// Value Update Flag
 	uint8_t flag;
-	// Value Setting 
-	uint8_t sampling_frequency;
-	int16_t ble_output_power;
-	uint8_t small_accident_level_x;
-	uint8_t small_accident_level_y;
-	uint8_t medium_accident_level;
-	uint8_t high_accident_level;
-	int16_t hard_accelaration_level;
-	int16_t hard_braking_level;
-	uint8_t hard_steering_level_left;
-	uint8_t hard_steering_level_right;
-	uint32_t current_utc;
-}bsc_t;
+	// Value Setting
+	uint16_t small_accident_level_x;
+	uint16_t small_accident_level_y;
+	uint16_t medium_accident_level;
+	uint16_t high_accident_level;
+	uint16_t hard_accelaration_level;
+	uint16_t hard_braking_level;
+	uint16_t hard_steering_level_left;
+	uint16_t hard_steering_level_right;
+}tsc_t;
 
 typedef struct
 {
@@ -83,6 +89,22 @@ typedef struct
 	uint8_t *data_payload;
 }rdrc_t;
 
+//Boarding Detection Report
+typedef struct
+{
+	uint8_t advertising_period;
+	uint8_t advertising_duration;
+	uint8_t advertising_interval;
+}bdc_t;
+
+// Button Data Report
+typedef struct
+{
+	uint8_t advertising_time;
+	uint8_t advertising_interval;
+	uint8_t button_status;
+}bdrc_t;
+
 typedef enum
 {
     BLE_PBS_EVT_NOTIFICATION_ENABLED,                             /**< Battery value notification enabled event. */
@@ -96,7 +118,7 @@ typedef struct
 } ble_pbs_evt_t;
 
 
-// Forward declaration of the ble_bas_t type. 
+// Forward declaration of the ble_pbs_t type. 
 typedef struct ble_pbs_s ble_pbs_t;
 
 /**@brief PBS event handler type. */
@@ -105,28 +127,31 @@ typedef void (*ble_pbs_evt_handler_t) (ble_pbs_t * p_pbs, ble_pbs_evt_t * p_evt)
 /**@brief Pioneer Beacon Service init structure. This contains all possible characteristics 
  *        needed for initialization of the service.
  */
-typedef struct
-{
-	bsc_t bsc_s;
-	esc_t esc_s;
-	drhc_t drhc_s;
-	cdrc_t cdrc_s;
-	rdrc_t rdrc_s;
-	 // Security configuration
-	ble_srv_security_mode_t    pbs_attr_md; 
-	ble_srv_cccd_security_mode_t pbs_cccd_md;
-	//Event handle
-	ble_pbs_evt_handler_t         evt_handler;  // Detect for there's a event or not
-} ble_pbs_init_t;
+//typedef struct
+//{
+//	bsc_t bsc_s;
+//	esc_t esc_s;
+//	drhc_t drhc_s;
+//	cdrc_t cdrc_s;
+//	rdrc_t rdrc_s;
+//	 // Security configuration
+//	ble_srv_security_mode_t    pbs_attr_md; 
+//	ble_srv_cccd_security_mode_t pbs_cccd_md;
+//	//Event handle
+//	ble_pbs_evt_handler_t         evt_handler;  // Detect for there's a event or not
+//} ble_pbs_init_t;
 
 struct ble_pbs_s
 {
   // All Data
 	bsc_t bsc_s;
+	tsc_t tsc_s;
 	esc_t esc_s;
 	drhc_t drhc_s;
 	cdrc_t cdrc_s;
 	rdrc_t rdrc_s;
+	bdc_t bdc_s;
+	bdrc_t bdrc_s;
 	 // Security configuration
 	ble_srv_security_mode_t    pbs_attr_md; 
 	ble_srv_cccd_security_mode_t pbs_cccd_md;
@@ -136,6 +161,8 @@ struct ble_pbs_s
 	ble_gatts_char_handles_t      drhc_handles;
 	ble_gatts_char_handles_t      cdrc_handles;
 	ble_gatts_char_handles_t      rdrc_handles;
+	ble_gatts_char_handles_t      bdc_handles;
+	ble_gatts_char_handles_t      bdrc_handles;
 	// Event handle
 	ble_pbs_evt_handler_t         evt_handler;                    /**< Event handler to be called for handling events in the Battery Service. */
 	bool is_notification_supported;  // No use
