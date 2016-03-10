@@ -73,10 +73,21 @@
 #define SPIS_MOSI_PIN   25  // SPI MOSI signal.
 #define SPIS_SCK_PIN    29  // SPI SCK signal.
 
-#define SPIM0_SCK_PIN   29  // SPI clock GPIO pin number.
-#define SPIM0_MOSI_PIN  25  // SPI Master Out Slave In GPIO pin number.
-#define SPIM0_MISO_PIN  28  // SPI Master In Slave Out GPIO pin number.
-#define SPIM0_SS_PIN    12  // SPI Slave Select GPIO pin number.
+//#define SPIM0_SCK_PIN   29  // SPI clock GPIO pin number.
+//#define SPIM0_MOSI_PIN  25  // SPI Master Out Slave In GPIO pin number.
+//#define SPIM0_MISO_PIN  28  // SPI Master In Slave Out GPIO pin number.
+//#define SPIM0_SS_PIN    12  // SPI Slave Select GPIO pin number.
+
+//#define SPIM1_SCK_PIN   2   // SPI clock GPIO pin number.
+//#define SPIM1_MOSI_PIN  3   // SPI Master Out Slave In GPIO pin number.
+//#define SPIM1_MISO_PIN  4   // SPI Master In Slave Out GPIO pin number.
+//#define SPIM1_SS_PIN    5   // SPI Slave Select GPIO pin number.
+
+//Tsungta define 
+#define SPIM0_SCK_PIN   28  // SPI clock GPIO pin number.
+#define SPIM0_MOSI_PIN  29  // SPI Master Out Slave In GPIO pin number.
+#define SPIM0_MISO_PIN  30  // SPI Master In Slave Out GPIO pin number.
+#define SPIM0_SS_PIN    31  // SPI Slave Select GPIO pin number.
 
 #define SPIM1_SCK_PIN   2   // SPI clock GPIO pin number.
 #define SPIM1_MOSI_PIN  3   // SPI Master Out Slave In GPIO pin number.

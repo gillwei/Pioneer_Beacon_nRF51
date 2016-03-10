@@ -14,9 +14,9 @@ static volatile bool spi1_transfer_completed = false; /**< A flag to inform abou
 
 
 //static void spi1_master_event_handler(nrf_drv_spi_event_t event)
-static void spi1_master_event_handler(nrf_drv_spi_evt_t event)
+static void spi1_master_event_handler(nrf_drv_spi_event_t event)
 {
-    switch (event.type)
+    switch (event)
     {
         case NRF_DRV_SPI_EVENT_DONE:
 						spi1_transfer_completed = true;

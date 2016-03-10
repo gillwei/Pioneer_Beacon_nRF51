@@ -472,7 +472,7 @@ uint32_t ble_pbs_init(ble_pbs_t * p_pbs)
 		service_uuid.uuid = PBS_SERVICE_SHORT_UUID; // assign short UUID		
 		ser_err_code = sd_ble_gatts_service_add(BLE_GATTS_SRVC_TYPE_PRIMARY, &service_uuid, &service_handle);
 #if PBS_DEBUG
-		printf("vs_add:%d\r\n",err_code);	
+		//printf("vs_add:%d\r\n",err_code);	
 		printf("service_add:%d\r\n",ser_err_code);	
 #endif
 		//Characteristic Setting
