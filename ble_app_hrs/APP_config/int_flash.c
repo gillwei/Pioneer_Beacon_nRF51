@@ -1,4 +1,6 @@
 #include <int_flash.h>
+#include "button_led.h"
+#include <string.h>
 
 #include "bsp.h"
 
@@ -72,27 +74,27 @@ uint32_t flash_word_read(uint32_t * address)
 uint32_t start_addr = 0x60000;
 uint32_t w_addr_ptr = 0x60000;
 uint32_t r_addr_ptr = 0x60000;
+//uint32_t start_addr = 0x1B000;
+//uint32_t w_addr_ptr = 0x1B000;
+//uint32_t r_addr_ptr = 0x1B000;
 uint32_t page_size = 0x1000;
 uint32_t four_page_size = 4*0x1000;
+
+extern uint8_t sensor_internal_ms;
 
 #define BUFFER_EVENT_SIZE 		8
 uint32_t w_r_addr[BUFFER_EVENT_SIZE];
 uint32_t event_addr[BUFFER_EVENT_SIZE];
 uint8_t event_type[BUFFER_EVENT_SIZE];
 uint32_t event_utc[BUFFER_EVENT_SIZE];
+uint8_t event_sensor_internal[BUFFER_EVENT_SIZE];
 uint8_t buffer_event_count = 0;
 uint8_t w_buffer_event_ptr = 0;
 uint8_t r_buffer_event_ptr = 0;
-uint16_t count_down_7s_50Hz = 7*50;
-uint16_t count_down_10s_50Hz = 10*50;
-uint16_t to_addr_3s_50Hz = 3*50*16;
+uint16_t count_down_3s_xHz = 3*DEFAULT_HZ;
+uint16_t count_down_10s_xHz = 10*DEFAULT_HZ;
+uint16_t to_addr_7s_xHz = 7*DEFAULT_HZ*16;
 bool is_event_detected = false;
-
-uint32_t w_flash_dummy1 = 0x0;
-uint32_t w_flash_dummy2 = 0x0;
-uint8_t bp;
-
-int acc_x100_to_12bit[3];
 
 void flash_data_set_init()
 {		
@@ -100,27 +102,39 @@ void flash_data_set_init()
 			w_r_addr[i] = start_addr + i*four_page_size; 
 }
 
-uint8_t flash_data_set_write(float acc_g_xyz[3], float cal_acc_g_xyz[3], uint8_t event_ID, uint32_t UTC)
+uint8_t current_event_ID_get() 
+{
+		if (is_event_detected) 
+			return event_type[w_buffer_event_ptr];
+		else 
+			return 0;
+}
+
+uint8_t flash_data_set_write(float acc_g_xyz[3], float cal_acc_g_xyz[3], uint8_t event_ID)
 {
 		uint32_t temp;
 		if (buffer_event_count==BUFFER_EVENT_SIZE) return buffer_event_count;// buffer full return immediately  
 			
 		if (event_ID) {
 			is_event_detected = true;
+			count_down_3s_xHz = 3*(1000/sensor_internal_ms);
 			event_addr[w_buffer_event_ptr] = w_addr_ptr;
 			event_type[w_buffer_event_ptr] = event_ID;
-			event_utc[w_buffer_event_ptr] = UTC;
+			event_utc[w_buffer_event_ptr] = UTC_get();
+			event_sensor_internal[w_buffer_event_ptr] = sensor_internal_ms;
 		}
 		
 		if (w_addr_ptr%page_size == 0) flash_page_erase((uint32_t*)w_addr_ptr);// new page, erase before writing
 	
 		if (acc_g_xyz != NULL) {
-			flash_word_write((uint32_t*)w_addr_ptr, w_flash_dummy1++);
+			temp = (uint32_t) ((float)(acc_g_xyz[0]+16)*100)<<16 | (uint32_t) ((float)(acc_g_xyz[1]+16)*100);
+			flash_word_write((uint32_t*)w_addr_ptr, temp);
 		}
 		w_addr_ptr+=4;
 
-		if (acc_g_xyz != NULL) {		
-			flash_word_write((uint32_t*)w_addr_ptr, w_flash_dummy1++);
+		if (acc_g_xyz != NULL) {	
+			temp = (uint32_t) ((float)(acc_g_xyz[2]+16)*100); 
+			flash_word_write((uint32_t*)w_addr_ptr, temp);
 		}
 		w_addr_ptr+=4;
 
@@ -138,17 +152,25 @@ uint8_t flash_data_set_write(float acc_g_xyz[3], float cal_acc_g_xyz[3], uint8_t
 	
 		if (w_addr_ptr == w_r_addr[w_buffer_event_ptr]+four_page_size) // ring buffering management, round in 4 pase size
 			w_addr_ptr = w_r_addr[w_buffer_event_ptr];
-//		if (w_addr_ptr%four_page_size == 0)
-//			bp++;
 		
 		if (is_event_detected) 
-			count_down_7s_50Hz--;
-		if (count_down_7s_50Hz==0) {
+			count_down_3s_xHz--;
+		if (count_down_3s_xHz==0) {
 			is_event_detected = false;
-			count_down_7s_50Hz = 7*50;
-			w_buffer_event_ptr++;
-			if(w_buffer_event_ptr==BUFFER_EVENT_SIZE) w_buffer_event_ptr = 0;
-			w_addr_ptr = w_r_addr[w_buffer_event_ptr];
+			count_down_3s_xHz = 3*(1000/sensor_internal_ms);
+			uint32_t last_w_r_addr = w_r_addr[w_buffer_event_ptr];
+			uint32_t last_ptr = w_addr_ptr - w_r_addr[w_buffer_event_ptr];
+			if(++w_buffer_event_ptr==BUFFER_EVENT_SIZE) w_buffer_event_ptr = 0;
+			
+			// start from the same ptr in next buffer space
+			w_addr_ptr = w_r_addr[w_buffer_event_ptr] + last_ptr;
+
+			// erase before copy the whole 4 page data to next buffer space
+			for(uint32_t i=0; i<four_page_size; i+=0x1000)
+				flash_page_erase((uint32_t*)(w_r_addr[w_buffer_event_ptr]+i));
+			for(uint32_t i=0; i<four_page_size; i+=4)
+				flash_word_write((uint32_t*)(w_r_addr[w_buffer_event_ptr]+i), flash_word_read((uint32_t *)(last_w_r_addr+i)));
+			
 			buffer_event_count++;
 		}
 		return buffer_event_count;
@@ -156,18 +178,21 @@ uint8_t flash_data_set_write(float acc_g_xyz[3], float cal_acc_g_xyz[3], uint8_t
 
 int flag = 1;
 
-int flash_data_set_read(uint32_t *acc_g_xy, uint32_t *acc_g_z, uint32_t *cal_acc_g_xy, uint32_t *cal_acc_g_z, uint8_t *event_ID, uint32_t *UTC)
+int flash_data_set_read(uint32_t *acc_g_xy, uint32_t *acc_g_z, uint32_t *cal_acc_g_xy, uint32_t *cal_acc_g_z, uint8_t *event_ID, uint32_t *UTC, uint8_t *sensor_interval)
 {
 		if (buffer_event_count == 0) return -1;// buffer empty return immediately  
 		
 		if (flag) {
-			count_down_10s_50Hz=10*50;
-			r_addr_ptr = event_addr[r_buffer_event_ptr]-to_addr_3s_50Hz;
+			count_down_10s_xHz=10*(1000/event_sensor_internal[r_buffer_event_ptr]);
+			to_addr_7s_xHz = 7*(1000/event_sensor_internal[r_buffer_event_ptr])*16;
+			r_addr_ptr = event_addr[r_buffer_event_ptr]-to_addr_7s_xHz;
 			if (r_addr_ptr < w_r_addr[r_buffer_event_ptr]) r_addr_ptr+= four_page_size;
-			*event_ID = event_type[r_buffer_event_ptr];
-			*UTC = event_utc[r_buffer_event_ptr];
 		}
 		flag = 0;
+
+		*event_ID = event_type[r_buffer_event_ptr];
+		*UTC = event_utc[r_buffer_event_ptr];
+		*sensor_interval = event_sensor_internal[r_buffer_event_ptr];
 		
 		if (acc_g_xy != NULL) {
 			*acc_g_xy = flash_word_read((uint32_t *)r_addr_ptr);
@@ -192,12 +217,12 @@ int flash_data_set_read(uint32_t *acc_g_xy, uint32_t *acc_g_z, uint32_t *cal_acc
 		if (r_addr_ptr == w_r_addr[r_buffer_event_ptr]+four_page_size) // ring buffering management, round in 4 pase size
 			w_addr_ptr = w_r_addr[r_buffer_event_ptr];
 		
-		count_down_10s_50Hz--;
-		if (count_down_10s_50Hz==0) {
+		count_down_10s_xHz--;
+		if (count_down_10s_xHz==0) {
 			r_buffer_event_ptr++;
 			if(r_buffer_event_ptr==BUFFER_EVENT_SIZE) r_buffer_event_ptr = 0;
 			buffer_event_count--;
 			flag = 1;
 		}
-		return count_down_10s_50Hz;
+		return count_down_10s_xHz;
 }

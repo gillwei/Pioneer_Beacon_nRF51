@@ -378,7 +378,7 @@ static void on_write(ble_pbs_t * p_pbs, ble_evt_t * p_ble_evt)
 						printf("data[0][1]:%02X,%02X\r\n",tempData[0],tempData[1]);
 #endif
 
-uint32_t error_code;
+//uint32_t error_code;
 
 ble_gatts_evt_write_t * p_evt_write = &p_ble_evt->evt.gatts_evt.params.write;
 		if (tempHandle == p_pbs->esc_handles.value_handle) // write to esc
@@ -467,6 +467,7 @@ uint32_t ble_pbs_init(ble_pbs_t * p_pbs)
 	// Build GATT Profile 
 		uint32_t err_code;
 		ble_uuid128_t base_uuid = PBS_UUID_BASE;  // It's invert added from the array sequence, uint8_t [16] array
+		//ble_uuid128_t bdc_long_uuid = PBS_BOARDING_DETECTION_REPORT_UUID;
 		err_code = sd_ble_uuid_vs_add(&base_uuid, &service_uuid.type); // add to Nordic VS UUID table
 		service_uuid.uuid = PBS_SERVICE_SHORT_UUID; // assign short UUID		
 		ser_err_code = sd_ble_gatts_service_add(BLE_GATTS_SRVC_TYPE_PRIMARY, &service_uuid, &service_handle);
@@ -512,7 +513,7 @@ uint32_t ble_pbs_init(ble_pbs_t * p_pbs)
 														&p_pbs->pbs_attr_md,
 														&p_pbs->bsc_handles);
 #if PBS_DEBUG
-		printf("tsc_add:%d\r\n",char_err_code);
+		//printf("tsc_add:%d\r\n",char_err_code);
 #endif	
 		
 		
@@ -530,7 +531,7 @@ uint32_t ble_pbs_init(ble_pbs_t * p_pbs)
 														&p_pbs->pbs_attr_md,
 														&p_pbs->bsc_handles);
 #if PBS_DEBUG
-		printf("bsc_add:%d\r\n",char_err_code);
+		//printf("bsc_add:%d\r\n",char_err_code);
 #endif				
 												
 		// Event Storage Characteristic
@@ -550,7 +551,7 @@ uint32_t ble_pbs_init(ble_pbs_t * p_pbs)
 		// Notify flag
 		esc_notify_flag = false;
 #if PBS_DEBUG
-		printf("esc_add:%d\r\n",char_err_code);
+		//printf("esc_add:%d\r\n",char_err_code);
 #endif							
 		// Data Report Header Characteristic
 		char_uuid_temp.uuid = PBS_DATA_REPORT_HEADER_CHAR_SHORT_UUID;
@@ -568,7 +569,7 @@ uint32_t ble_pbs_init(ble_pbs_t * p_pbs)
 														&p_pbs->drhc_handles);
 		drhc_notify_flag = false;
 #if PBS_DEBUG
-		printf("drhc_add:%d\r\n",char_err_code);												
+		//printf("drhc_add:%d\r\n",char_err_code);												
 #endif
 		// Cal Data Report Characteristic
 		char_uuid_temp.uuid = PBS_CAL_DATA_REPORT_CHAR_SHORT_UUID;
@@ -587,7 +588,7 @@ uint32_t ble_pbs_init(ble_pbs_t * p_pbs)
 														&p_pbs->cdrc_handles);
 		cdrc_notify_flag = false;
 #if PBS_DEBUG
-		printf("cdrc_add:%d\r\n",char_err_code);
+		//printf("cdrc_add:%d\r\n",char_err_code);
 #endif
 		// Raw Data Report Characteristic
 		char_uuid_temp.uuid = PBS_RAW_DATA_REPORT_CHAR_SHORT_UUID;
@@ -606,7 +607,7 @@ uint32_t ble_pbs_init(ble_pbs_t * p_pbs)
 														&p_pbs->rdrc_handles);
 		rdrc_notify_flag = false;
 #if PBS_DEBUG
-		printf("rdrc_add:%d\r\n",char_err_code);
+		//printf("rdrc_add:%d\r\n",char_err_code);
 #endif				
 // Boarding Detection Report Characteristic
 		ble_uuid128_t bdc_long_uuid = PBS_BOARDING_DETECTION_REPORT_UUID;  // It's invert added from the array sequence, uint8_t [16] array

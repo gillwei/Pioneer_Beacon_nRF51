@@ -47,6 +47,15 @@
 #include "int_flash.h"
 //#include "ble_gap.h"
 
+// Add for G sensor code
+#include "spi_flash.h"
+#include "lis2dh12.h"
+#include "int_flash.h"
+#include "nrf_drv_timer.h"
+#include "button_led.h"
+#include "read_adc.h"
+#include "event_detection.h"
+
 #define IS_SRVC_CHANGED_CHARACT_PRESENT  1                                          /**< Include or not the service_changed characteristic. if not enabled, the server's database cannot be changed for the lifetime of the device*/
 
 #define CENTRAL_LINK_COUNT               0                                          /**<number of central links used by the application. When changing this number remember to adjust the RAM settings*/
@@ -133,30 +142,30 @@ void assert_nrf_callback(uint16_t line_num, const uint8_t * p_file_name)
     app_error_handler(DEAD_BEEF, line_num, p_file_name);
 }
 
-void flash_write_simulation(void)
-{
-	float cal_acc_test[3];	
-		cal_acc_test[0] = 12;
-		cal_acc_test[1] = 25;
-		cal_acc_test[2] = 30;			
-		int w_cnt = 600 * 3;
-		flash_data_set_init();	
-		while(w_cnt--) {
-				if (w_cnt == 1000) {
-					flash_data_set_write(NULL, cal_acc_test, 1, w_cnt);
-				} else if (w_cnt == 500) {
-					flash_data_set_write(NULL, cal_acc_test, 2, w_cnt);
-				}	else {
-					flash_data_set_write(NULL, cal_acc_test,0, 0);
-				}	
-		}
-		nrf_delay_ms(100);
-		pktCounter = 125;
-		m_pbs.esc_s.number_of_event = 1;
-		uint8_t esc_sim_data[3] = {0,0,1};
-		ble_pbs_esc_update(&m_pbs, esc_sim_data);
-		printf("flash write simulation\r\n");
-}
+//void flash_write_simulation(void)
+//{
+//	float cal_acc_test[3];	
+//		cal_acc_test[0] = 12;
+//		cal_acc_test[1] = 25;
+//		cal_acc_test[2] = 30;			
+//		int w_cnt = 600 * 3;
+//		flash_data_set_init();	
+//		while(w_cnt--) {
+//				if (w_cnt == 1000) {
+//					flash_data_set_write(NULL, cal_acc_test, 1, w_cnt);
+//				} else if (w_cnt == 500) {
+//					flash_data_set_write(NULL, cal_acc_test, 2, w_cnt);
+//				}	else {
+//					flash_data_set_write(NULL, cal_acc_test,0, 0);
+//				}	
+//		}
+//		nrf_delay_ms(100);
+//		pktCounter = 125;
+//		m_pbs.esc_s.number_of_event = 1;
+//		uint8_t esc_sim_data[3] = {0,0,1};
+//		ble_pbs_esc_update(&m_pbs, esc_sim_data);
+//		printf("flash write simulation\r\n");
+//}
 
 
 /**@brief Function for handling the Battery measurement timer timeout.
@@ -170,22 +179,22 @@ void flash_write_simulation(void)
 static void dhrc_timeout_handler(void * p_context)
 {
     UNUSED_PARAMETER(p_context);
-		
+		printf("timeout\r\n");
 		// Start flash write simulation
 	if (pktCounter == 0 && esc_notify_flag)
 	{
-		flash_write_simulation();
+		//flash_write_simulation();
 	}
 	// Simulator flash read
 		uint32_t r_xy;
 		uint32_t r_z;
-		uint8_t r_event_ID;
-		uint32_t r_UTC;
+		//uint8_t r_event_ID;
+		//uint32_t r_UTC;
 		int ret;
 		uint16_t data_x[4] = {0};
 		uint16_t data_y[4] = {0};
 		uint16_t data_z[4] = {0};
-		uint8_t len = 0;
+		//uint8_t len = 0;
 		uint8_t p_cal_encoded_buffer[20] = {0};
 		p_cal_encoded_buffer[0] = pktCounter;
 		p_cal_encoded_buffer[1] = 18;
@@ -201,7 +210,7 @@ static void dhrc_timeout_handler(void * p_context)
 			// Simulator flash read, assign to uint16_t array
 			for(int i=0;i<4;i++)
 			{
-				ret=flash_data_set_read(NULL, NULL, &r_xy, &r_z, &r_event_ID, &r_UTC);
+				//ret=flash_data_set_read(NULL, NULL, &r_xy, &r_z, &r_event_ID, &r_UTC);
 				data_x[i] = (uint16_t)((r_xy&0xFFFF0000)>>16);
 				data_y[i] = (uint16_t)(r_xy&0xFFFF);
 				data_z[i] = (uint16_t)(r_z&0xFFFF);
@@ -393,7 +402,7 @@ static void application_timers_start(void)
  */
 static void on_conn_params_evt(ble_conn_params_evt_t * p_evt)
 {
-    uint32_t err_code;
+		//uint32_t err_code;
 		
 		// edited by Gill
     if (p_evt->evt_type == BLE_CONN_PARAMS_EVT_FAILED)
@@ -697,10 +706,10 @@ static void advertising_init(void)
 
 
 // Gill add 
-static void ble_advertising_error_handler(uint32_t nrf_error)
-{
-    APP_ERROR_HANDLER(nrf_error);
-}
+//static void ble_advertising_error_handler(uint32_t nrf_error)
+//{
+//    APP_ERROR_HANDLER(nrf_error);
+//}
 
 //static void advertising_init(void)
 //{
