@@ -1,5 +1,5 @@
 
-#include <spi_flash.h>
+#include <spi_flash_MXIC.h>
 
 #include "nrf_delay.h"
 #include "nrf_drv_spi.h"
@@ -13,19 +13,18 @@ static const nrf_drv_spi_t m_spi1_master = NRF_DRV_SPI_INSTANCE(1);
 static volatile bool spi1_transfer_completed = false; /**< A flag to inform about completed transfer. */
 
 
-//static void spi1_master_event_handler(nrf_drv_spi_event_t event)
-static void spi1_master_event_handler(nrf_drv_spi_event_t event)
+static void spi1_master_event_handler(nrf_drv_spi_evt_t const * p_event)
 {
-    switch (event)
-    {
-        case NRF_DRV_SPI_EVENT_DONE:
+//    switch (event)
+//    {
+//        case NRF_DRV_SPI_EVENT_DONE:
 						spi1_transfer_completed = true;
-            break;
+//            break;
 
-        default:
-            // No implementation needed.
-            break;
-    }
+//        default:
+//            // No implementation needed.
+//            break;
+//    }
 }
 
 static void spi1_send_recv(uint8_t * const p_tx_data,
@@ -65,11 +64,11 @@ bool spi_flash_init(void)
     nrf_drv_spi_init(&m_spi1_master, &config, spi1_master_event_handler);
 		
     //spi_flash_writeOneByte(p_spi_base_address, CMD_POWER_UP);
-		p_tx_data[0] = CMD_POWER_UP;
+		p_tx_data[0] = CMD_POWER_UP;//CMD_POWER_UP can act as dummy byte when using MXIC
 		spi1_send_recv(p_tx_data, p_rx_data, 1);
 
 		//wait for wake up
-		nrf_delay_us(30);
+		nrf_delay_us(35);
 
 		//spi_flash_writeOneByte(p_spi_base_address, CMD_JEDEC_ID);
 		p_tx_data[0] = CMD_JEDEC_ID;
@@ -79,7 +78,7 @@ bool spi_flash_init(void)
 		deviceID = (uint16_t)(p_rx_data[2] << 8);
 		deviceID |= p_rx_data[3];
 
-		if (mfgId != MFG_ID_WINBOND || deviceID != DEVICE_ID_WINBOND_8M) {
+		if (mfgId != MFG_ID_FLASH || deviceID != DEVICE_ID_FLASH) {
 				return false;
 		}
 		
@@ -98,7 +97,7 @@ bool spi_flash_powerDown(void)
 		spi1_send_recv(p_tx_data, p_rx_data, 1);
 
 		//wait for sleep
-		nrf_delay_us(3);
+		nrf_delay_us(10);
 		
 		return true;
 }
@@ -204,72 +203,4 @@ void spi_flash_readpage(uint32_t address, uint8_t *data, uint16_t len)
 		spi1_send_recv(p_tx_data, p_rx_data, CMD_LENGTH+THREE_BYTE_LENGTH+len);
 		memcpy(data, &p_rx_data[4], len);
 		
-}
-
-void spi_flash_writepage_security(uint32_t address, const uint8_t *data, uint16_t len)
-{
-		//wait busy
-		while(spi_flash_waitBusy()) {};
-		
-		//setWEL
-		spi_flash_setWEL();
-
-    //uint32_t * p_spi_base_address = 0;
-    
-		uint8_t p_tx_data[CMD_LENGTH+THREE_BYTE_LENGTH+len];
-    uint8_t p_rx_data[CMD_LENGTH+THREE_BYTE_LENGTH+len];
-		
-		p_tx_data[0] = CMD_PAGE_PROG_SECU;
-		
-		p_tx_data[1] = ((address >> 16) & 0xFF);
-		p_tx_data[2] = ((address >> 8) & 0xFF);
-		p_tx_data[3] = (address & 0xFF);
-		
-		memcpy(&p_tx_data[4], data, len);
-		spi1_send_recv(p_tx_data, p_rx_data, CMD_LENGTH+THREE_BYTE_LENGTH+len);
-
-		return;
-}
-
-void spi_flash_read_security(uint32_t address, uint8_t *data, uint16_t len)//address must be one of 0x1000, 0x2000 and 0x3000
-{
-
-		uint8_t dummy_len = 1;
-	
-		//wait busy
-		while(spi_flash_waitBusy()) {};
-			
-    //uint32_t * p_spi_base_address = 0;
-
-		uint8_t p_tx_data[CMD_LENGTH+THREE_BYTE_LENGTH+dummy_len+len];
-    uint8_t p_rx_data[CMD_LENGTH+THREE_BYTE_LENGTH+dummy_len+len];
-
-		p_tx_data[0] = CMD_READ_SECU;
-		
-		p_tx_data[1] = ((address >> 16) & 0xFF);
-		p_tx_data[2] = ((address >> 8) & 0xFF);
-		p_tx_data[3] = (address & 0xFF);
-
-		spi1_send_recv(p_tx_data, p_rx_data, CMD_LENGTH+THREE_BYTE_LENGTH+dummy_len+len);
-		memcpy(data, &p_rx_data[5], len);
-
-}
-
-void spi_flash_read_uniqueID(uint8_t *data)
-{
-		uint8_t dummy_len = 4;
-		uint8_t id_len = 8;
-
-		uint8_t p_tx_data[CMD_LENGTH+dummy_len+id_len];
-    uint8_t p_rx_data[CMD_LENGTH+dummy_len+id_len];	
-		
-		//wait busy
-		while(spi_flash_waitBusy()) {};
-			
-    //uint32_t * p_spi_base_address = 0;
-
-		p_tx_data[0] = CMD_READ_UNIQUE_ID;
-		spi1_send_recv(p_tx_data, p_rx_data, CMD_LENGTH+dummy_len+id_len);
-		memcpy(data, &p_rx_data[5], id_len);	
-
 }

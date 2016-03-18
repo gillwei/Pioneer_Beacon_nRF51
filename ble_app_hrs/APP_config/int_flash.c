@@ -1,13 +1,19 @@
 #include <int_flash.h>
 #include "button_led.h"
 #include <string.h>
+#include "spi_flash_MXIC.h"
 
 #include "bsp.h"
 
 #include <stdio.h>
 
+#define STORAGE_EXT_FLASH
+
 void flash_page_erase(uint32_t * page_address)
 {
+#ifdef STORAGE_EXT_FLASH	
+		spi_flash_eraseCmd(CMD_ERASE_4K, (uint32_t)page_address);
+#else
     // Turn on flash erase enable and wait until the NVMC is ready:
     NRF_NVMC->CONFIG = (NVMC_CONFIG_WEN_Een << NVMC_CONFIG_WEN_Pos);
 
@@ -18,7 +24,7 @@ void flash_page_erase(uint32_t * page_address)
 
     // Erase page:
     NRF_NVMC->ERASEPAGE = (uint32_t)page_address;
-
+		
     while (NRF_NVMC->READY == NVMC_READY_READY_Busy)
     {
         // Do nothing.
@@ -31,6 +37,7 @@ void flash_page_erase(uint32_t * page_address)
     {
         // Do nothing.
     }
+#endif
 }
 
 
@@ -41,6 +48,15 @@ void flash_page_erase(uint32_t * page_address)
  */
 void flash_word_write(uint32_t * address, uint32_t value)
 {
+#ifdef STORAGE_EXT_FLASH		
+		uint8_t tx_data[4];
+		tx_data[3] = (uint8_t) (value >> 24);
+		tx_data[2] = (uint8_t) (value >> 16);
+		tx_data[1] = (uint8_t) (value >> 8);
+		tx_data[0] = (uint8_t) value;
+	
+		spi_flash_writepage((uint32_t) address, tx_data, 4);
+#else		
     // Turn on flash write enable and wait until the NVMC is ready:
     NRF_NVMC->CONFIG = (NVMC_CONFIG_WEN_Wen << NVMC_CONFIG_WEN_Pos);
 
@@ -63,20 +79,25 @@ void flash_word_write(uint32_t * address, uint32_t value)
     {
         // Do nothing.
     }
+#endif
 }
 
 uint32_t flash_word_read(uint32_t * address)
 {
+#ifdef STORAGE_EXT_FLASH		
+		uint8_t rx_data[4];
+		spi_flash_readpage((uint32_t) address, rx_data, 4);
+		uint32_t ret = rx_data[0] | (rx_data[1] << 8) | (rx_data[2] << 16) | (rx_data[3] << 24);
+		return ret;
+#else	
     return *address;
+#endif	
 }
 
 /************ Following is used for Pioner Beacon Service ***********/
 uint32_t start_addr = 0x60000;
 uint32_t w_addr_ptr = 0x60000;
 uint32_t r_addr_ptr = 0x60000;
-//uint32_t start_addr = 0x1B000;
-//uint32_t w_addr_ptr = 0x1B000;
-//uint32_t r_addr_ptr = 0x1B000;
 uint32_t page_size = 0x1000;
 uint32_t four_page_size = 4*0x1000;
 
@@ -96,10 +117,28 @@ uint16_t count_down_10s_xHz = 10*DEFAULT_HZ;
 uint16_t to_addr_7s_xHz = 7*DEFAULT_HZ*16;
 bool is_event_detected = false;
 
+		uint32_t t_test = 0x100123;
+		uint32_t r_test = 0;
+		
 void flash_data_set_init()
 {		
 		for (int i=0; i<BUFFER_EVENT_SIZE; i++)
 			w_r_addr[i] = start_addr + i*four_page_size; 
+	
+		spi_flash_init();
+
+//		uint8_t tx_test[3] = {0x1B, 0x1C, 0x1D}; 
+//		uint8_t rx_test[3] = {0}; 
+
+//		spi_flash_eraseCmd(CMD_ERASE_4K, 0);
+//		spi_flash_writepage(0x00, tx_test, 3);
+//		spi_flash_readpage(0x00, rx_test, 3);	
+		
+
+		
+		flash_page_erase((uint32_t*)0x60000);
+		flash_word_write((uint32_t*)0x60000, t_test);
+		r_test = flash_word_read((uint32_t*)0x60000);
 }
 
 uint8_t current_event_ID_get() 
@@ -225,4 +264,4 @@ int flash_data_set_read(uint32_t *acc_g_xy, uint32_t *acc_g_z, uint32_t *cal_acc
 			flag = 1;
 		}
 		return count_down_10s_xHz;
-}
+}	

@@ -166,29 +166,19 @@ static const nrf_drv_spi_t m_spi0_master = NRF_DRV_SPI_INSTANCE(0);
 static volatile bool spi0_transfer_completed = false; /**< A flag to inform about completed transfer. */
 
 
-static void spi0_master_event_handler(nrf_drv_spi_event_t event)
-//static void spi0_master_event_handler(nrf_drv_spi_evt_t event)
+static void spi0_master_event_handler(nrf_drv_spi_evt_t const * p_event)
 {
-    switch (event)
-    {
-        case NRF_DRV_SPI_EVENT_DONE:
-						spi0_transfer_completed = true;
-            break;
-
-        default:
-            // No implementation needed.
-            break;
-    }
-}
-//void spi_event_handler(nrf_drv_spi_evt_t const * p_event)
-//{
-//    spi0_transfer_completed = true;
-//    printf(" Transfer completed.\r\n");
-//    if (m_rx_buf[0] != 0)
+//    switch (event)
 //    {
-//        printf(" Received: %s\r\n",m_rx_buf);
+//        case NRF_DRV_SPI_EVENT_DONE:
+						spi0_transfer_completed = true;
+//            break;
+
+//        default:
+//            // No implementation needed.
+//            break;
 //    }
-//}
+}
 
 static void spi0_send_recv(uint8_t * const p_tx_data,
                           uint8_t * const p_rx_data,
@@ -233,7 +223,7 @@ bool lis2dh12_init(void)
 		spi0_send_recv(p_tx_data, p_rx_data, 2);
 		
 		//wait for turn-on time
-		nrf_delay_ms(2);//nrf_delay_us(1600);
+		nrf_delay_us(1600);
 		
 		p_tx_data[0] = CTRL_REG4;
 		p_tx_data[1] = 0x38;			//+/-16g, High Resolution (12 bits)

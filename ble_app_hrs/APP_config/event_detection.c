@@ -2,6 +2,7 @@
 #include "lis2dh12.h"
 #include "int_flash.h"
 #include "button_led.h"
+#include "spi_flash_MXIC.h"
 #include "math.h"
 
 #include "app_uart.h"
@@ -13,13 +14,16 @@
 
 #include "nrf_drv_timer.h"
 
-#define EVENT_UART_DEBUG				1
+//#define EVENT_UART_DEBUG
 
 #define MAX_TEST_DATA_BYTES     (15U)                /**< max number of test bytes to be used for tx and rx. */
 #define UART_TX_BUF_SIZE 256                         /**< UART TX buffer size. */
 #define UART_RX_BUF_SIZE 1                           /**< UART RX buffer size. */
 
 uint8_t current_event_ID = 0;
+
+uint32_t tt, last_tt, cnt, Ecnt;
+bool t_lock = false;
 
 enum{
 	NO_EVENT=0,  
@@ -56,54 +60,54 @@ float moving_avg_cal_y[moving_avg_size_ms/min_interval] = {0};
 uint8_t moving_avg_ptr = 0;
 extern float offset_xyz[3];
 
-const nrf_drv_timer_t TIMER_SENSOR = NRF_DRV_TIMER_INSTANCE(0);
+const nrf_drv_timer_t TIMER_SENSOR = NRF_DRV_TIMER_INSTANCE(2);
 bool sensor_trigger = false;
 
-//void uart_error_handle(app_uart_evt_t * p_event)
-//{
-//    if (p_event->evt_type == APP_UART_COMMUNICATION_ERROR)
-//    {
-//        APP_ERROR_HANDLER(p_event->data.error_communication);
-//    }
-//    else if (p_event->evt_type == APP_UART_FIFO_ERROR)
-//    {
-//        APP_ERROR_HANDLER(p_event->data.error_code);
-//    }
-//}
+void uart_error_handle(app_uart_evt_t * p_event)
+{
+    if (p_event->evt_type == APP_UART_COMMUNICATION_ERROR)
+    {
+        APP_ERROR_HANDLER(p_event->data.error_communication);
+    }
+    else if (p_event->evt_type == APP_UART_FIFO_ERROR)
+    {
+        APP_ERROR_HANDLER(p_event->data.error_code);
+    }
+}
 
-//void uart_init(void)
-//{
-//    uint32_t err_code;
-//    const app_uart_comm_params_t comm_params =
-//      {
-//          RX_PIN_NUMBER,
-//          TX_PIN_NUMBER,
-//          RTS_PIN_NUMBER,
-//          CTS_PIN_NUMBER,
-//          APP_UART_FLOW_CONTROL_ENABLED,
-//          false,
-//          UART_BAUDRATE_BAUDRATE_Baud115200
-//      };
+void uart_init(void)
+{
+    uint32_t err_code;
+    const app_uart_comm_params_t comm_params =
+      {
+          RX_PIN_NUMBER,
+          TX_PIN_NUMBER,
+          RTS_PIN_NUMBER,
+          CTS_PIN_NUMBER,
+          APP_UART_FLOW_CONTROL_DISABLED,
+          false,
+          UART_BAUDRATE_BAUDRATE_Baud115200
+      };
 
-//    APP_UART_FIFO_INIT(&comm_params,
-//                         UART_RX_BUF_SIZE,
-//                         UART_TX_BUF_SIZE,
-//                         uart_error_handle,
-//                         APP_IRQ_PRIORITY_LOW,
-//                         err_code);
+    APP_UART_FIFO_INIT(&comm_params,
+                         UART_RX_BUF_SIZE,
+                         UART_TX_BUF_SIZE,
+                         uart_error_handle,
+                         APP_IRQ_PRIORITY_LOW,
+                         err_code);
 
-//    APP_ERROR_CHECK(err_code);	
-//}
+    APP_ERROR_CHECK(err_code);	
+}
 
 /**
  * @brief Handler for timer events.
  */
-void timer0_event_handler(nrf_timer_event_t event_type, void* p_context)
+void timer2_event_handler(nrf_timer_event_t event_type, void* p_context)
 {
     
     switch(event_type)
     {
-        case NRF_TIMER_EVENT_COMPARE0:
+        case NRF_TIMER_EVENT_COMPARE2:
 						sensor_trigger = true;
             break;
         
@@ -119,12 +123,12 @@ void event_sampling_interval_set(uint8_t internal_ms)
 		temp_sensor_internal_ms = internal_ms;
 
 		nrf_drv_timer_uninit(&TIMER_SENSOR);
-		nrf_drv_timer_init(&TIMER_SENSOR, NULL, timer0_event_handler);
+		nrf_drv_timer_init(&TIMER_SENSOR, NULL, timer2_event_handler);
     
     sensor_ticks = nrf_drv_timer_ms_to_ticks(&TIMER_SENSOR, internal_ms);
     
     nrf_drv_timer_extended_compare(
-         &TIMER_SENSOR, NRF_TIMER_CC_CHANNEL0, sensor_ticks, NRF_TIMER_SHORT_COMPARE0_CLEAR_MASK, true);
+         &TIMER_SENSOR, NRF_TIMER_CC_CHANNEL2, sensor_ticks, NRF_TIMER_SHORT_COMPARE2_CLEAR_MASK, true);
     
     nrf_drv_timer_enable(&TIMER_SENSOR);
 }
@@ -157,13 +161,9 @@ uint8_t accident_dangerous_detection(float Accx_offset, float Accy_offset, float
 
 		return w_event_ID;
 }
-
-uint32_t tt, last_tt, cnt, Ecnt;
-bool t_lock = false;
 	
 void event_detection_routine(void)
 {
-		//printf("event_detection_routine\r\n");
 		if (sensor_trigger) {
 			uint8_t w_event_ID;
 			
@@ -189,7 +189,7 @@ void event_detection_routine(void)
 			if(current_event_ID_get() == NO_EVENT)
 				sensor_internal_ms = temp_sensor_internal_ms;//only apply the setting if no event happening
 			
-#if EVENT_UART_DEBUG			
+#ifdef EVENT_UART_DEBUG			
 		uint32_t r_xy;
 		uint32_t r_z;
 		uint8_t r_event_ID;
@@ -197,28 +197,21 @@ void event_detection_routine(void)
 		uint32_t cal_r_xy;
 		uint32_t cal_r_z;
 		uint8_t r_sensor_interval;	
-		
-		
 		int ret=flash_data_set_read(&r_xy, &r_z, &cal_r_xy, &cal_r_z, &r_event_ID, &r_UTC, &r_sensor_interval);
-		float a = ((float)(r_sensor_interval*Ecnt++)/1000)+r_UTC-7;
-		float b = (float)((cal_r_xy&0xFFFF0000)>>16)/100-16;
-		float c = (float)(cal_r_xy&0x0000FFFF)/100-16;
-			float d = (float)cal_r_z/100-16;
-			if (ret >= 0) {
+		if (ret >= 0) {
 			if(t_lock==false) {
 				t_lock=true;
 				printf("eventID: %i triggeredUTC: %u numDataSet %i\n\r", r_event_ID, r_UTC, ret+1);
 			}
 			//print logged raw xyz data
-			//printf("%6.3f,%6.3f,%6.3f,%6.3f\r\n", (float)((float)(r_sensor_interval*Ecnt++)/1000)+r_UTC-7,(float)((cal_r_xy&0xFFFF0000)>>16)/100-16,(float)(cal_r_xy&0x0000FFFF)/100-16, (float)cal_r_z/100-16);
+			printf("%f,%f,%f,%f\n\r", (float)((float)(r_sensor_interval*Ecnt++)/1000)+r_UTC-7,(float)((cal_r_xy&0xFFFF0000)>>16)/100-16,(float)(cal_r_xy&0x0000FFFF)/100-16, (float)cal_r_z/100-16);
 		} else if (t_lock==false) {
 			/*print calibrated xyz raw data*/
 			//printf("%f,%f,%f,%f\n\r", (float)(sensor_internal_ms*cnt++)/1000, cal_acc_test[0], cal_acc_test[1], cal_acc_test[2]); //output for SerialChart program		
 			/*print Gx(ave)correct and Gy(ave)correct*/
-			//printf("%f,%f,%f\n\r", (float)(sensor_internal_ms*cnt++)/1000, Accx_avg-offset_xyz[0], Accy_avg-offset_xyz[1]); //output for SerialChart program		
+			printf("%f,%f,%f\n\r", (float)(sensor_internal_ms*cnt++)/1000, Accx_avg-offset_xyz[0], Accy_avg-offset_xyz[1]); //output for SerialChart program		
 			/*print Gx_correct and Gy_correct*/
-			
-			//printf("%6.3f,%6.3f,%6.3f\r\n", (float)(sensor_internal_ms*cnt++)/1000, cal_acc_test[0]-offset_xyz[0], cal_acc_test[1]-offset_xyz[1]); //output for SerialChart program
+			//printf("%f,%f,%f\n\r", (float)(sensor_internal_ms*cnt++)/1000, cal_acc_test[0]-offset_xyz[0], cal_acc_test[1]-offset_xyz[1]); //output for SerialChart program
 		}
 #endif		
 		}		

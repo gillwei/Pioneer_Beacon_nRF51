@@ -18,6 +18,13 @@
  * @ref srvlib_conn_params module.
  */
 
+
+#include "lis2dh12.h"
+#include "int_flash.h"
+#include "nrf_drv_timer.h"
+#include "button_led.h"
+#include "event_detection.h"
+
 #include <stdint.h>
 #include <string.h>
 #include "nordic_common.h"
@@ -28,7 +35,13 @@
 #include "ble_srv_common.h"
 #include "ble_advdata.h"
 #include "ble_advertising.h"
-
+#include "ble_bas.h"
+#include "ble_hrs.h"
+#include "ble_dis.h"
+#ifdef BLE_DFU_APP_SUPPORT
+#include "ble_dfu.h"
+#include "dfu_app_handler.h"
+#endif // BLE_DFU_APP_SUPPORT
 #include "ble_conn_params.h"
 #include "boards.h"
 #include "sensorsim.h"
@@ -41,49 +54,47 @@
 #include "nrf_delay.h"
 #include "bsp_btn_ble.h"
 #include "ble_pbs.h"
-#include "app_uart.h"
-// include for int_flash.c
-//#include "math.h"
-#include "int_flash.h"
-//#include "ble_gap.h"
-
-// Add for G sensor code
-#include "spi_flash.h"
-#include "lis2dh12.h"
-#include "int_flash.h"
-#include "nrf_drv_timer.h"
-#include "button_led.h"
-#include "read_adc.h"
-#include "event_detection.h"
+#include "spi_flash_MXIC.h"
+#include "nrf_drv_gpiote.h"
 
 #define IS_SRVC_CHANGED_CHARACT_PRESENT  1                                          /**< Include or not the service_changed characteristic. if not enabled, the server's database cannot be changed for the lifetime of the device*/
 
 #define CENTRAL_LINK_COUNT               0                                          /**<number of central links used by the application. When changing this number remember to adjust the RAM settings*/
 #define PERIPHERAL_LINK_COUNT            1                                          /**<number of peripheral links used by the application. When changing this number remember to adjust the RAM settings*/
 
-#define DEVICE_NAME                      "BLE_PBS"                               /**< Name of device. Will be included in the advertising data. */
-
-
-// Gill add
-/*UART buffer size. */
-#define UART_TX_BUF_SIZE 256
-#define UART_RX_BUF_SIZE 1
-
-#define APP_ADV_INTERVAL                 160 //300                                        /**< The advertising interval (in units of 0.625 ms. This value corresponds to 25 ms). */
-#define APP_ADV_TIMEOUT_IN_SECONDS       4 //180                                        /**< The advertising timeout in units of seconds. */
+#define DEVICE_NAME                      "BLE_PBS_V0_1"                               /**< Name of device. Will be included in the advertising data. */
+#define MANUFACTURER_NAME                "NordicSemiconductor"                      /**< Manufacturer. Will be passed to Device Information Service. */
+#define APP_ADV_INTERVAL                 300                                        /**< The advertising interval (in units of 0.625 ms. This value corresponds to 25 ms). */
+#define APP_ADV_TIMEOUT_IN_SECONDS       180000                                        /**< The advertising timeout in units of seconds. */
 
 #define APP_TIMER_PRESCALER              0                                          /**< Value of the RTC1 PRESCALER register. */
 #define APP_TIMER_OP_QUEUE_SIZE          4                                          /**< Size of timer operation queues. */
-#define TIMER_DURATION 									 2000
+
 #define DATA_HEADER_REPORT_INTERVAL      APP_TIMER_TICKS(TIMER_DURATION, APP_TIMER_PRESCALER) 
-#define MIN_DRHC_DATA                		 1                                         
-#define MAX_DRHC_DATA               	 	 32                                        
-#define DRHC_INCREMENT          				 1 
+
+#define CAL_INTERVAL_DURATION						 50 
+#define CAL_DATA_INTERVAL      					 APP_TIMER_TICKS(CAL_INTERVAL_DURATION, APP_TIMER_PRESCALER) /**< Battery level measurement interval (ticks). */
+#define MIN_BATTERY_LEVEL                81                                         /**< Minimum simulated battery level. */
+#define MAX_BATTERY_LEVEL                100                                        /**< Maximum simulated 7battery level. */
+#define BATTERY_LEVEL_INCREMENT          1                                          /**< Increment between each simulated battery level measurement. */
+
+#define ADV_STOP_DURATION								 60000  // Stop advertising Period, should be multiple of ADVERTISING_TIMER_DURATION
+#define ADV_DURATION										 18000000 // Advertising timeout, should be multiple of ADVERTISING_TIMER_DURATION
+#define ADVERTISING_TIMER_DURATION			 1000
+#define ADVERTISING_TIMER_INTERVAL       APP_TIMER_TICKS(ADVERTISING_TIMER_DURATION, APP_TIMER_PRESCALER) /**< Heart rate measurement interval (ticks). */
+//#define MIN_HEART_RATE                   140                                        /**< Minimum heart rate as returned by the simulated measurement function. */
+//#define MAX_HEART_RATE                   300                                        /**< Maximum heart rate as returned by the simulated measurement function. */
+//#define HEART_RATE_INCREMENT             10                                         /**< Value by which the heart rate is incremented/decremented for each call to the simulated measurement function. */
+
+//#define RR_INTERVAL_INTERVAL             APP_TIMER_TICKS(300, APP_TIMER_PRESCALER)  /**< RR interval interval (ticks). */
+//#define MIN_RR_INTERVAL                  100                                        /**< Minimum RR interval as returned by the simulated measurement function. */
+//#define MAX_RR_INTERVAL                  500                                        /**< Maximum RR interval as returned by the simulated measurement function. */
+//#define RR_INTERVAL_INCREMENT            1                                          /**< Value by which the RR interval is incremented/decremented for each call to the simulated measurement function. */
 
 #define SENSOR_CONTACT_DETECTED_INTERVAL APP_TIMER_TICKS(5000, APP_TIMER_PRESCALER) /**< Sensor Contact Detected toggle interval (ticks). */
 
-#define MIN_CONN_INTERVAL                MSEC_TO_UNITS(400, UNIT_1_25_MS)           /**< Minimum acceptable connection interval (0.4 seconds). */
-#define MAX_CONN_INTERVAL                MSEC_TO_UNITS(650, UNIT_1_25_MS)           /**< Maximum acceptable connection interval (0.65 second). */
+#define MIN_CONN_INTERVAL                MSEC_TO_UNITS(40, UNIT_1_25_MS)  //400         /**< Minimum acceptable connection interval (0.4 seconds). */
+#define MAX_CONN_INTERVAL                MSEC_TO_UNITS(100, UNIT_1_25_MS)  //650         /**< Maximum acceptable connection interval (0.65 second). */
 #define SLAVE_LATENCY                    0                                          /**< Slave latency. */
 #define CONN_SUP_TIMEOUT                 MSEC_TO_UNITS(4000, UNIT_10_MS)            /**< Connection supervisory timeout (4 seconds). */
 
@@ -99,22 +110,39 @@
 #define SEC_PARAM_MAX_KEY_SIZE           16                                         /**< Maximum encryption key size. */
 
 #define DEAD_BEEF                        0xDEADBEEF                                 /**< Value used as error code on stack dump, can be used to identify stack location on stack unwind. */
+#define FLASH_READ								 			 1
+#define DEFAULT_BLE_TX_POWER						 -8			
+
+#ifdef BLE_DFU_APP_SUPPORT
+#define DFU_REV_MAJOR                    0x00                                       /** DFU Major revision number to be exposed. */
+#define DFU_REV_MINOR                    0x01                                       /** DFU Minor revision number to be exposed. */
+#define DFU_REVISION                     ((DFU_REV_MAJOR << 8) | DFU_REV_MINOR)     /** DFU Revision number to be exposed. Combined of major and minor versions. */
+#define APP_SERVICE_HANDLE_START         0x000C                                     /**< Handle of first application specific service when when service changed characteristic is present. */
+#define BLE_HANDLE_MAX                   0xFFFF                                     /**< Max handle value in BLE. */
+
+
+STATIC_ASSERT(IS_SRVC_CHANGED_CHARACT_PRESENT);                                     /** When having DFU Service support in application the Service Changed Characteristic should always be present. */
+#endif // BLE_DFU_APP_SUPPORT
+
 
 static uint16_t                          m_conn_handle = BLE_CONN_HANDLE_INVALID;   /**< Handle of the current connection. */
+
 static ble_pbs_t                         m_pbs;                                     /**< Structure used to identify the PBS. */
-static sensorsim_cfg_t                   m_drhc_sim_cfg;                         
-static sensorsim_state_t                 m_drhc_sim_state;
-APP_TIMER_DEF(m_data_header_report_id);  
+//static ble_bas_t                         m_bas;                                     /**< Structure used to identify the battery service. */
+//static ble_hrs_t                         m_hrs;                                     /**< Structure used to identify the heart rate service. */
+//static bool                              m_rr_interval_enabled = true;              /**< Flag for enabling and disabling the registration of new RR interval measurements (the purpose of disabling this is just to test sending HRM without RR interval data. */
 
-#define APP_ADV_FAST_INTERVAL           0x0028                                      /**< Fast advertising interval (in units of 0.625 ms. This value corresponds to 25 ms.). */
-#define APP_ADV_SLOW_INTERVAL           0x0C80                                      /**< Slow advertising interval (in units of 0.625 ms. This value corrsponds to 2 seconds). */
-#define APP_ADV_FAST_TIMEOUT            30                                          /**< The duration of the fast advertising period (in seconds). */
-#define APP_ADV_SLOW_TIMEOUT            180                                         /**< The duration of the slow advertising period (in seconds). */
+//static sensorsim_cfg_t                   m_battery_sim_cfg;                         /**< Battery Level sensor simulator configuration. */
+//static sensorsim_state_t                 m_battery_sim_state;                       /**< Battery Level sensor simulator state. */
+//static sensorsim_cfg_t                   m_heart_rate_sim_cfg;                      /**< Heart Rate sensor simulator configuration. */
+//static sensorsim_state_t                 m_heart_rate_sim_state;                    /**< Heart Rate sensor simulator state. */
+//static sensorsim_cfg_t                   m_rr_interval_sim_cfg;                     /**< RR Interval sensor simulator configuration. */
+//static sensorsim_state_t                 m_rr_interval_sim_state;                   /**< RR Interval sensor simulator state. */
 
-#define MAIN_DEBUG											1 
-#define PBS_SERVICE_SHORT_UUID 										0x2FE0
-#define ADV_TOTAL_DURATION								64000
-//#define ADV_DURATION										4000 // advertising timeout 
+APP_TIMER_DEF(m_cal_data_id);                                                  /**< Battery timer. */
+APP_TIMER_DEF(m_adv_timer_id);                                               /**< Heart rate measurement timer. */
+//APP_TIMER_DEF(m_rr_interval_timer_id);                                              /**< RR interval timer. */                 /**< RR interval timer. */
+//APP_TIMER_DEF(m_sensor_contact_timer_id);                                           /**< Sensor contact detected timer. */
 
 extern bool esc_notify_flag;
 extern bool start_dw_flag;
@@ -122,14 +150,29 @@ extern bool drhc_notify_flag;
 extern bool cdrc_notify_flag;
 extern bool rdrc_notify_flag;
 static dm_application_instance_t         m_app_handle;                              /**< Application identifier allocated by device manager */
+static bool data_process_trigger = false;
+static bool advertising_trigger = false;
+//static ble_uuid_t m_adv_uuids[] = {{BLE_UUID_HEART_RATE_SERVICE,         BLE_UUID_TYPE_BLE}};
+                                   //{BLE_UUID_BATTERY_SERVICE,            BLE_UUID_TYPE_BLE}};
+                                   //{BLE_UUID_DEVICE_INFORMATION_SERVICE, BLE_UUID_TYPE_BLE}}; /**< Universally unique service identifiers. */
+#define PBS_SERVICE_SHORT_UUID 										0x2FE0
+static ble_uuid_t m_adv_uuids[] = {{BLE_UUID_ALERT_NOTIFICATION_SERVICE,         BLE_UUID_TYPE_BLE}};
+#ifdef BLE_DFU_APP_SUPPORT
+static ble_dfu_t                         m_dfus;                                    /**< Structure used to identify the DFU service. */
+#endif // BLE_DFU_APP_SUPPORT
 
-static ble_uuid_t m_adv_uuids[] = {{BLE_UUID_DEVICE_INFORMATION_SERVICE, BLE_UUID_TYPE_BLE}};
-//static ble_uuid_t m_adv_uuids[] = {{PBS_SERVICE_SHORT_UUID, BLE_UUID_TYPE_VENDOR_BEGIN}};  // CAN'T USE
+//Gill Add 20160314
+#define MAIN_DEBUG											1 
+#define PBS_SERVICE_SHORT_UUID 										0x2FE0
 
-static int pktCounter = 0; // need change to variable
 
-static uint16_t adv_counter;
-
+static uint16_t pktCounter = 0; // need change to variable
+static uint16_t pktCounterCopy;
+static uint16_t adv_counter = 0;
+static bool 		adv_on = false;
+static uint16_t totalPktNum;
+static uint8_t p_cal_encoded_buffer_prepare[20] = {0};
+																	 
 /**@brief Callback function for asserts in the SoftDevice.
  *
  * @details This function will be called in case of an assert in the SoftDevice.
@@ -146,74 +189,51 @@ void assert_nrf_callback(uint16_t line_num, const uint8_t * p_file_name)
     app_error_handler(DEAD_BEEF, line_num, p_file_name);
 }
 
-//void flash_write_simulation(void)
+
+/**@brief Function for performing battery measurement and updating the Battery Level characteristic
+ *        in Battery Service.
+ */
+//static void battery_level_update(void)
 //{
-//	float cal_acc_test[3];	
-//		cal_acc_test[0] = 12;
-//		cal_acc_test[1] = 25;
-//		cal_acc_test[2] = 30;			
-//		int w_cnt = 600 * 3;
-//		flash_data_set_init();	
-//		while(w_cnt--) {
-//				if (w_cnt == 1000) {
-//					flash_data_set_write(NULL, cal_acc_test, 1, w_cnt);
-//				} else if (w_cnt == 500) {
-//					flash_data_set_write(NULL, cal_acc_test, 2, w_cnt);
-//				}	else {
-//					flash_data_set_write(NULL, cal_acc_test,0, 0);
-//				}	
-//		}
-//		nrf_delay_ms(100);
-//		pktCounter = 125;
+//    uint32_t err_code;
+//    uint8_t  battery_level;
+
+//    battery_level = (uint8_t)sensorsim_measure(&m_battery_sim_state, &m_battery_sim_cfg);
+
+//    err_code = ble_bas_battery_level_update(&m_bas, battery_level);
+//    if ((err_code != NRF_SUCCESS) &&
+//        (err_code != NRF_ERROR_INVALID_STATE) &&
+//        (err_code != BLE_ERROR_NO_TX_PACKETS) &&
+//        (err_code != BLE_ERROR_GATTS_SYS_ATTR_MISSING)
+//        )
+//    {
+//        APP_ERROR_HANDLER(err_code);
+//    }
+//}
+
+void flash_write_simulation(void)
+{
+	float cal_acc_test[3];	
+		cal_acc_test[0] = 0.5;
+		cal_acc_test[1] = 0.1;
+		cal_acc_test[2] = 0.2;			
+		int w_cnt = 600 * 3;
+	//	flash_data_set_init();	
+		while(w_cnt--) {
+				if (w_cnt == 1000) {
+					flash_data_set_write(NULL, cal_acc_test, 1);
+				} else if (w_cnt == 500) {
+					flash_data_set_write(NULL, cal_acc_test, 2);
+				}	else {
+					flash_data_set_write(NULL, cal_acc_test,0);
+				}	
+		}
+		//nrf_delay_ms(20);
+		pktCounter = 125;
 //		m_pbs.esc_s.number_of_event = 1;
 //		uint8_t esc_sim_data[3] = {0,0,1};
 //		ble_pbs_esc_update(&m_pbs, esc_sim_data);
-//		printf("flash write simulation\r\n");
-//}
-
-static ble_adv_mode_t                  m_adv_mode_current; /**< Variable to keep track of the current advertising mode. */
-static ble_adv_modes_config_t          m_adv_modes_config;
-static ble_gap_addr_t                  m_peer_address;     /**< Address of the most recently connected peer, used for direct advertising. */
-static ble_advdata_t                   m_advdata;          /**< Used by the initialization function to set name, appearance, and UUIDs and advertising flags visible to peer devices. */
-static ble_adv_evt_t                   m_adv_evt;
-
-uint32_t ble_start_advertising(ble_adv_mode_t advertising_mode)
-{
-    uint32_t             err_code;
-    ble_gap_adv_params_t adv_params;
-    m_adv_mode_current = advertising_mode;
-    uint32_t             count = 0;
-
-    // Verify if there are any pending flash operations. If so, delay starting advertising until
-    // the flash operations are complete.
-    err_code = pstorage_access_status_get(&count);
-    if (err_code == NRF_ERROR_INVALID_STATE)
-    {
-        // Pstorage is not initialized, i.e. not in use.
-        count = 0;
-    }
-		else
-		{
-			printf("pstorage occupied:%i\r\n",count);
-		}
-		
-
-    // Initialize advertising parameters with default values.
-    memset(&adv_params, 0, sizeof(adv_params));
-
-    adv_params.type        = BLE_GAP_ADV_TYPE_ADV_IND;
-    adv_params.p_peer_addr = NULL;
-    adv_params.fp          = BLE_GAP_ADV_FP_ANY;
-    adv_params.p_whitelist = NULL;
-		adv_params.timeout  = m_adv_modes_config.ble_adv_fast_timeout;
-    adv_params.interval = m_adv_modes_config.ble_adv_fast_interval;
-		m_adv_evt = BLE_ADV_EVT_FAST;
-    printf("Starting fast advertisement.\r\n");
-            
-    // Set advertising parameters and events according to selected advertising mode.
-    err_code = sd_ble_gap_adv_start(&adv_params);
-		VERIFY_SUCCESS(err_code);
-    
+		printf("flash write simulation\r\n");
 }
 
 /**@brief Function for handling the Battery measurement timer timeout.
@@ -223,59 +243,95 @@ uint32_t ble_start_advertising(ble_adv_mode_t advertising_mode)
  * @param[in] p_context  Pointer used for passing some arbitrary information (context) from the
  *                       app_start_timer() call to the timeout handler.
  */
-
-static void dhrc_timeout_handler(void * p_context)
+static void cal_data_timeout_handler(void * p_context)
 {
-    UNUSED_PARAMETER(p_context);
-		//printf("timeout\r\n");
-		// Start flash write simulation
-	uint32_t err_code;
-	if (adv_counter>0)
+	UNUSED_PARAMETER(p_context);
+	data_process_trigger = true;
+}
+
+static void data_process(void)
+{
+    if (data_process_trigger)
 	{
-		adv_counter--;
-		printf("adv_counter:%i\r\n",adv_counter);
-	}
-	else
+		data_process_trigger = false;
+		uint32_t err_code;
+	
+	if (pktCounter == 0)
 	{
-		sd_ble_gap_adv_stop();
-		err_code = ble_start_advertising(BLE_ADV_MODE_FAST);
-		printf("adv_err:%04X\r\n",err_code);
-		adv_counter = ADV_TOTAL_DURATION/TIMER_DURATION;
-	}
-	if (pktCounter == 0 && esc_notify_flag)
-	{
-		//flash_write_simulation();
+//		flash_write_simulation();
 	}
 	// Simulator flash read
-		uint32_t r_xy;
-		uint32_t r_z;
-		//uint8_t r_event_ID;
-		//uint32_t r_UTC;
-		int ret;
 		uint16_t data_x[4] = {0};
 		uint16_t data_y[4] = {0};
 		uint16_t data_z[4] = {0};
 		//uint8_t len = 0;
 		uint8_t p_cal_encoded_buffer[20] = {0};
-		p_cal_encoded_buffer[0] = pktCounter;
-		p_cal_encoded_buffer[1] = 18;
+		
 		//uint32_t err_code;
-		uint8_t pktNum=0;
-		if (pktCounter > 0 && cdrc_notify_flag== true && start_dw_flag)
+#if FLASH_READ	
+		uint32_t r_xy;
+		uint32_t r_z;
+		uint8_t r_event_ID;
+		uint32_t r_UTC;
+		uint32_t cal_r_xy;
+		uint32_t cal_r_z;
+		uint8_t r_sensor_interval;	
+		int ret=-1;
+		ret = flash_data_set_read(&r_xy, &r_z, &cal_r_xy, &cal_r_z, &r_event_ID, &r_UTC, &r_sensor_interval);
+		//nrf_delay_ms(100);
+		// UART Print
+		if (ret >= 0) {
+				
+				printf("%i,%u,", r_event_ID, r_UTC);
+			//print logged raw xyz data
+			printf("%i,%f,%f,%f\n\r", ret+1,(float)((cal_r_xy&0xFFFF0000)>>16)/100-16,(float)(cal_r_xy&0x0000FFFF)/100-16, (float)cal_r_z/100-16);
+		} else{
+			//printf("no event;");
+		}
+		uint8_t pktNum=0; //for 4 packet in one notify
+		
+		if (ret > 0 && m_conn_handle != BLE_CONN_HANDLE_INVALID && cdrc_notify_flag== true)  // for test
 		{
-			if (pktCounter == 125) // The first data packet
-				nrf_delay_ms(200);
+			// need change
+			//totalPktNum = (m_pbs.bsc_s.sampling_frequency)*(m_pbs.drhc_s.recorded_event_duration);
+//			if (ret == 499) 
+//			{
+//				pktCounter = 125; 
+//			}
+			// Send Data Header
+			pktCounter = (ret+1)/4;
 			printf("pktCounter : %i ",pktCounter);
+			pktCounterCopy = pktCounter;
+			if ((pktCounter > pktCounterCopy) || pktCounter == 125)
+			{
+				uint32_t tempUTC = UTC_get();
+				uint8_t p_tempUTC[4]; 
+				uint32_big_encode(tempUTC,p_tempUTC);
+				uint8_t sim_drhc_data[14] = {20,12,3,r_event_ID,10,p_tempUTC[0],p_tempUTC[1],p_tempUTC[2],p_tempUTC[3],0,0,0,0,0};
+				//uint8_t sim_drhc_data[9] = {20,12,3,1,10,0,0,0,0};
+				err_code = ble_pbs_drhc_update(&m_pbs, sim_drhc_data);
+				printf("drhc_update:%04X\r\n",err_code);
+			}
+			
+			p_cal_encoded_buffer[0] = pktCounter;
+			p_cal_encoded_buffer[1] = 18;
+			
 			pktCounter--;
-
-			// Simulator flash read, assign to uint16_t array
+			// Flash data assign to uint16_t array
+			for (int i=0;i<4;i++)
+			{
+				data_x[i] = (uint16_t)((cal_r_xy&0xFFFF0000)>>16);
+				data_y[i] = (uint16_t)(cal_r_xy&0xFFFF);
+				data_z[i] = (uint16_t)(cal_r_z&0xFFFF);
+				if (i!= 0)
+					ret = flash_data_set_read(&r_xy, &r_z, &cal_r_xy, &cal_r_z, &r_event_ID, &r_UTC, &r_sensor_interval);
+			}
+				// Check data 
 			for(int i=0;i<4;i++)
 			{
-				//ret=flash_data_set_read(NULL, NULL, &r_xy, &r_z, &r_event_ID, &r_UTC);
-				data_x[i] = (uint16_t)((r_xy&0xFFFF0000)>>16);
-				data_y[i] = (uint16_t)(r_xy&0xFFFF);
-				data_z[i] = (uint16_t)(r_z&0xFFFF);
+				printf("%04X %04X %04X ",data_x[i],data_y[i],data_z[i]);
 			}
+			printf("\r\n");
 			pktNum=0;
 			// assign 4 read data value to cdrc data packet
 			for (int i=2;i<20;i=i+9)
@@ -294,13 +350,143 @@ static void dhrc_timeout_handler(void * p_context)
 			printf("ret: %i,Cal data:",ret);
 			for(int i=19;i>=0;i--)
 			{
-				printf("%02X ",p_cal_encoded_buffer[i]);
+				printf("%02X",p_cal_encoded_buffer[i]);
 			}
 			printf("\r\n");
+			// Check Flash data read error
+			if (p_cal_encoded_buffer[19]==0xFF &&p_cal_encoded_buffer[18]==0xFF&&p_cal_encoded_buffer[17]==0xFF && p_cal_encoded_buffer[16]==0xFF)
+			{
+					for(int i=19;i>=2;i--)
+					{
+						p_cal_encoded_buffer[i] = p_cal_encoded_buffer_prepare[i];
+					}
+			}
 			err_code = ble_pbs_cdrc_update(&m_pbs, p_cal_encoded_buffer);
+			printf("cdrc_update_err:%04X\r\n",err_code);
+			
+			//Prepare for flash read error
+			for(int i=19;i>=2;i--)
+			{
+				p_cal_encoded_buffer_prepare[i] = p_cal_encoded_buffer[i];
+			}
 		}
-
+#endif
+	} // if(ble_routine_trigger)
 }
+
+//static void battery_level_meas_timeout_handler(void * p_context)
+//{
+//    UNUSED_PARAMETER(p_context);
+//    battery_level_update();
+//}
+
+
+/**@brief Function for handling the Heart rate measurement timer timeout.
+ *
+ * @details This function will be called each time the heart rate measurement timer expires.
+ *          It will exclude RR Interval data from every third measurement.
+ *
+ * @param[in] p_context  Pointer used for passing some arbitrary information (context) from the
+ *                       app_start_timer() call to the timeout handler.
+ */
+static void advertising_duration_handle(void)
+{
+	if (advertising_trigger)
+	{
+		advertising_trigger = false;
+		uint32_t err_code;
+		adv_counter--;
+		if (adv_counter==0 && adv_on == true)
+		{
+			sd_ble_gap_adv_stop();
+			printf("adv_stop;adv_counter:%i\r\n",adv_counter);
+			adv_counter = ADV_STOP_DURATION/ADVERTISING_TIMER_DURATION;
+			adv_on = false;
+		}
+		else if (adv_counter == 0 && adv_on == false)
+		{
+			err_code = ble_advertising_start(BLE_ADV_MODE_FAST);
+			printf("adv_start;adv_err:%04X\r\n",err_code);
+			adv_counter = ADV_DURATION/ADVERTISING_TIMER_DURATION;
+			adv_on = true;
+		}
+  }
+}
+static void adv_timeout_handler(void * p_context)
+{
+	UNUSED_PARAMETER(p_context);
+	// For advertising
+	//advertising_trigger = true;
+}
+
+
+
+//static void heart_rate_meas_timeout_handler(void * p_context)
+//{
+//    static uint32_t cnt = 0;
+//    uint32_t        err_code;
+//    uint16_t        heart_rate;
+
+//    UNUSED_PARAMETER(p_context);
+
+//    heart_rate = (uint16_t)sensorsim_measure(&m_heart_rate_sim_state, &m_heart_rate_sim_cfg);
+
+//    cnt++;
+//    err_code = ble_hrs_heart_rate_measurement_send(&m_hrs, heart_rate);
+//    if ((err_code != NRF_SUCCESS) &&
+//        (err_code != NRF_ERROR_INVALID_STATE) &&
+//        (err_code != BLE_ERROR_NO_TX_PACKETS) &&
+//        (err_code != BLE_ERROR_GATTS_SYS_ATTR_MISSING)
+//        )
+//    {
+//        APP_ERROR_HANDLER(err_code);
+//    }
+
+//    // Disable RR Interval recording every third heart rate measurement.
+//    // NOTE: An application will normally not do this. It is done here just for testing generation
+//    //       of messages without RR Interval measurements.
+//    m_rr_interval_enabled = ((cnt % 3) != 0);
+//}
+
+
+/**@brief Function for handling the RR interval timer timeout.
+ *
+ * @details This function will be called each time the RR interval timer expires.
+ *
+ * @param[in] p_context  Pointer used for passing some arbitrary information (context) from the
+ *                       app_start_timer() call to the timeout handler.
+ */
+//static void rr_interval_timeout_handler(void * p_context)
+//{
+//    UNUSED_PARAMETER(p_context);
+
+//    if (m_rr_interval_enabled)
+//    {
+//        uint16_t rr_interval;
+
+//        rr_interval = (uint16_t)sensorsim_measure(&m_rr_interval_sim_state,
+//                                                      &m_rr_interval_sim_cfg);
+//        ble_hrs_rr_interval_add(&m_hrs, rr_interval);
+//    }
+//}
+
+
+/**@brief Function for handling the Sensor Contact Detected timer timeout.
+ *
+ * @details This function will be called each time the Sensor Contact Detected timer expires.
+ *
+ * @param[in] p_context  Pointer used for passing some arbitrary information (context) from the
+ *                       app_start_timer() call to the timeout handler.
+ */
+//static void sensor_contact_detected_timeout_handler(void * p_context)
+//{
+//    static bool sensor_contact_detected = false;
+
+//    UNUSED_PARAMETER(p_context);
+
+//    sensor_contact_detected = !sensor_contact_detected;
+//    ble_hrs_sensor_contact_detected_update(&m_hrs, sensor_contact_detected);
+//}
 
 
 /**@brief Function for the Timer initialization.
@@ -315,11 +501,26 @@ static void timers_init(void)
     APP_TIMER_INIT(APP_TIMER_PRESCALER, APP_TIMER_OP_QUEUE_SIZE, false);
 
     // Create timers.
-	    err_code = app_timer_create(&m_data_header_report_id,
+
+    err_code = app_timer_create(&m_cal_data_id,
                                 APP_TIMER_MODE_REPEATED,
-                                dhrc_timeout_handler);
+                                cal_data_timeout_handler);
     APP_ERROR_CHECK(err_code);
 
+    err_code = app_timer_create(&m_adv_timer_id,
+                                APP_TIMER_MODE_REPEATED,
+                                adv_timeout_handler);
+    APP_ERROR_CHECK(err_code);
+
+//    err_code = app_timer_create(&m_rr_interval_timer_id,
+//                                APP_TIMER_MODE_REPEATED,
+//                                rr_interval_timeout_handler);
+//    APP_ERROR_CHECK(err_code);
+
+//    err_code = app_timer_create(&m_sensor_contact_timer_id,
+//                                APP_TIMER_MODE_REPEATED,
+//                                sensor_contact_detected_timeout_handler);
+//    APP_ERROR_CHECK(err_code);
 }
 
 
@@ -341,7 +542,7 @@ static void gap_params_init(void)
                                           strlen(DEVICE_NAME));
     APP_ERROR_CHECK(err_code);
 
-    err_code = sd_ble_gap_appearance_set(BLE_APPEARANCE_HEART_RATE_SENSOR_HEART_RATE_BELT);
+    err_code = sd_ble_gap_appearance_set(BLE_APPEARANCE_UNKNOWN);
     APP_ERROR_CHECK(err_code);
 
     memset(&gap_conn_params, 0, sizeof(gap_conn_params));
@@ -356,6 +557,103 @@ static void gap_params_init(void)
 }
 
 
+#ifdef BLE_DFU_APP_SUPPORT
+/**@brief Function for stopping advertising.
+ */
+static void advertising_stop(void)
+{
+    uint32_t err_code;
+
+    err_code = sd_ble_gap_adv_stop();
+    APP_ERROR_CHECK(err_code);
+
+    err_code = bsp_indication_set(BSP_INDICATE_IDLE);
+    APP_ERROR_CHECK(err_code);
+}
+
+
+/**@brief Function for loading application-specific context after establishing a secure connection.
+ *
+ * @details This function will load the application context and check if the ATT table is marked as
+ *          changed. If the ATT table is marked as changed, a Service Changed Indication
+ *          is sent to the peer if the Service Changed CCCD is set to indicate.
+ *
+ * @param[in] p_handle The Device Manager handle that identifies the connection for which the context
+ *                     should be loaded.
+ */
+static void app_context_load(dm_handle_t const * p_handle)
+{
+    uint32_t                 err_code;
+    static uint32_t          context_data;
+    dm_application_context_t context;
+
+    context.len    = sizeof(context_data);
+    context.p_data = (uint8_t *)&context_data;
+
+    err_code = dm_application_context_get(p_handle, &context);
+    if (err_code == NRF_SUCCESS)
+    {
+        // Send Service Changed Indication if ATT table has changed.
+        if ((context_data & (DFU_APP_ATT_TABLE_CHANGED << DFU_APP_ATT_TABLE_POS)) != 0)
+        {
+            err_code = sd_ble_gatts_service_changed(m_conn_handle, APP_SERVICE_HANDLE_START, BLE_HANDLE_MAX);
+            if ((err_code != NRF_SUCCESS) &&
+                (err_code != BLE_ERROR_INVALID_CONN_HANDLE) &&
+                (err_code != NRF_ERROR_INVALID_STATE) &&
+                (err_code != BLE_ERROR_NO_TX_PACKETS) &&
+                (err_code != NRF_ERROR_BUSY) &&
+                (err_code != BLE_ERROR_GATTS_SYS_ATTR_MISSING))
+            {
+                APP_ERROR_HANDLER(err_code);
+            }
+        }
+
+        err_code = dm_application_context_delete(p_handle);
+        APP_ERROR_CHECK(err_code);
+    }
+    else if (err_code == DM_NO_APP_CONTEXT)
+    {
+        // No context available. Ignore.
+    }
+    else
+    {
+        APP_ERROR_HANDLER(err_code);
+    }
+}
+
+
+/** @snippet [DFU BLE Reset prepare] */
+/**@brief Function for preparing for system reset.
+ *
+ * @details This function implements @ref dfu_app_reset_prepare_t. It will be called by
+ *          @ref dfu_app_handler.c before entering the bootloader/DFU.
+ *          This allows the current running application to shut down gracefully.
+ */
+static void reset_prepare(void)
+{
+    uint32_t err_code;
+
+    if (m_conn_handle != BLE_CONN_HANDLE_INVALID)
+    {
+        // Disconnect from peer.
+        err_code = sd_ble_gap_disconnect(m_conn_handle, BLE_HCI_REMOTE_USER_TERMINATED_CONNECTION);
+        APP_ERROR_CHECK(err_code);
+        err_code = bsp_indication_set(BSP_INDICATE_IDLE);
+        APP_ERROR_CHECK(err_code);
+    }
+    else
+    {
+        // If not connected, the device will be advertising. Hence stop the advertising.
+        advertising_stop();
+    }
+
+    err_code = ble_conn_params_stop();
+    APP_ERROR_CHECK(err_code);
+
+    nrf_delay_ms(500);
+}
+/** @snippet [DFU BLE Reset prepare] */
+#endif // BLE_DFU_APP_SUPPORT
 
 
 /**@brief Function for initializing services that will be used by the application.
@@ -365,9 +663,7 @@ static void gap_params_init(void)
 static void services_init(void)
 {
     uint32_t       err_code;
-//		ble_pbs_init_t pbs_init; //No use currently
-
-		m_pbs.evt_handler          = NULL;
+	m_pbs.evt_handler          = NULL;
 		memset(&m_pbs, 0, sizeof(m_pbs));
     BLE_GAP_CONN_SEC_MODE_SET_OPEN(&m_pbs.pbs_attr_md.read_perm);
 		BLE_GAP_CONN_SEC_MODE_SET_OPEN(&m_pbs.pbs_attr_md.write_perm); // Orignally no access
@@ -375,21 +671,21 @@ static void services_init(void)
 		
 		// Value setting 
 		//bool utc_exist_bit = false;  // bit located in m_pbs.bsc_s.flag 0x10, TBD
+		m_pbs.tsc_s.small_accident_level_x = 70;
+		m_pbs.tsc_s.small_accident_level_y = 60;
+		m_pbs.tsc_s.medium_accident_level = 600;
+		m_pbs.tsc_s.high_accident_level = 1000;
+		m_pbs.tsc_s.hard_accelaration_level = 30;
+		m_pbs.tsc_s.hard_braking_level = 35;
+		m_pbs.tsc_s.hard_steering_level_left = 35;
+		m_pbs.tsc_s.hard_steering_level_right= 35;
+	
 		m_pbs.bsc_s.flag = 0x00;
 		m_pbs.bsc_s.sampling_frequency = 50;
 		m_pbs.bsc_s.ble_output_power = -8;
 		m_pbs.bsc_s.current_utc = 0;
 		m_pbs.bsc_s.ambient_sensor_value = 0;
 		m_pbs.bsc_s.acc_voltage = 0;
-		
-		m_pbs.tsc_s.small_accident_level_x = 70;
-		m_pbs.tsc_s.small_accident_level_y = 60;
-		m_pbs.tsc_s.medium_accident_level = 60;
-		m_pbs.tsc_s.high_accident_level = 100;
-		m_pbs.tsc_s.hard_accelaration_level = 30;
-		m_pbs.tsc_s.hard_braking_level = 35;
-		m_pbs.tsc_s.hard_steering_level_left = 35;
-		m_pbs.tsc_s.hard_steering_level_right= 35;
 
 		// Event Storage Characteristic default value
 		m_pbs.esc_s.download_control_point = 0x00;
@@ -401,6 +697,8 @@ static void services_init(void)
 		m_pbs.drhc_s.recorded_event_id = 0;
 		m_pbs.drhc_s.recorded_event_duration = 10;
 		m_pbs.drhc_s.recorded_utc_of_event_start = 0;
+		uint8_t default_p_sensor_data_offset[5] = {0};
+		m_pbs.drhc_s.sensor_data_offset = default_p_sensor_data_offset;
 		// Calibration Data Log default value
 		m_pbs.cdrc_s.data_packet_id = 0;
 		m_pbs.cdrc_s.data_packet_length = 18;
@@ -414,14 +712,87 @@ static void services_init(void)
 		
 		m_pbs.bdc_s.advertising_period = 64;
 		m_pbs.bdc_s.advertising_duration = 4;
-		m_pbs.bdc_s.advertising_interval = 100;
+		m_pbs.bdc_s.bdc_advertising_interval = 100;
 		
-		m_pbs.bdrc_s.advertising_interval = 100;
 		m_pbs.bdrc_s.advertising_time = 5;
+		m_pbs.bdrc_s.bdrc_advertising_interval = 100;
 		m_pbs.bdrc_s.button_status = 0;
     err_code = ble_pbs_init(&m_pbs);
     APP_ERROR_CHECK(err_code);
+	
+    //ble_hrs_init_t hrs_init;
+//    ble_bas_init_t bas_init;
+//    ble_dis_init_t dis_init;
+    uint8_t        body_sensor_location;
 
+    // Initialize Heart Rate Service.
+//    body_sensor_location = BLE_HRS_BODY_SENSOR_LOCATION_FINGER;
+
+//    memset(&hrs_init, 0, sizeof(hrs_init));
+
+//    hrs_init.evt_handler                 = NULL;
+//    hrs_init.is_sensor_contact_supported = true;
+//    hrs_init.p_body_sensor_location      = &body_sensor_location;
+
+//    // Here the sec level for the Heart Rate Service can be changed/increased.
+//    BLE_GAP_CONN_SEC_MODE_SET_OPEN(&hrs_init.hrs_hrm_attr_md.cccd_write_perm);
+//    BLE_GAP_CONN_SEC_MODE_SET_NO_ACCESS(&hrs_init.hrs_hrm_attr_md.read_perm);
+//    BLE_GAP_CONN_SEC_MODE_SET_NO_ACCESS(&hrs_init.hrs_hrm_attr_md.write_perm);
+
+//    BLE_GAP_CONN_SEC_MODE_SET_OPEN(&hrs_init.hrs_bsl_attr_md.read_perm);
+//    BLE_GAP_CONN_SEC_MODE_SET_NO_ACCESS(&hrs_init.hrs_bsl_attr_md.write_perm);
+
+//    err_code = ble_hrs_init(&m_hrs, &hrs_init);
+//    APP_ERROR_CHECK(err_code);
+
+//    // Initialize Battery Service.
+//    memset(&bas_init, 0, sizeof(bas_init));
+
+//    // Here the sec level for the Battery Service can be changed/increased.
+//    BLE_GAP_CONN_SEC_MODE_SET_OPEN(&bas_init.battery_level_char_attr_md.cccd_write_perm);
+//    BLE_GAP_CONN_SEC_MODE_SET_OPEN(&bas_init.battery_level_char_attr_md.read_perm);
+//    BLE_GAP_CONN_SEC_MODE_SET_NO_ACCESS(&bas_init.battery_level_char_attr_md.write_perm);
+
+//    BLE_GAP_CONN_SEC_MODE_SET_OPEN(&bas_init.battery_level_report_read_perm);
+
+//    bas_init.evt_handler          = NULL;
+//    bas_init.support_notification = true;
+//    bas_init.p_report_ref         = NULL;
+//    bas_init.initial_batt_level   = 100;
+
+//    err_code = ble_bas_init(&m_bas, &bas_init);
+//    APP_ERROR_CHECK(err_code);
+
+    // Initialize Device Information Service.
+//    memset(&dis_init, 0, sizeof(dis_init));
+
+//    ble_srv_ascii_to_utf8(&dis_init.manufact_name_str, (char *)MANUFACTURER_NAME);
+
+//    BLE_GAP_CONN_SEC_MODE_SET_OPEN(&dis_init.dis_attr_md.read_perm);
+//    BLE_GAP_CONN_SEC_MODE_SET_NO_ACCESS(&dis_init.dis_attr_md.write_perm);
+
+//    err_code = ble_dis_init(&dis_init);
+//    APP_ERROR_CHECK(err_code);
+
+#ifdef BLE_DFU_APP_SUPPORT
+    /** @snippet [DFU BLE Service initialization] */
+    ble_dfu_init_t   dfus_init;
+
+    // Initialize the Device Firmware Update Service.
+    memset(&dfus_init, 0, sizeof(dfus_init));
+
+    dfus_init.evt_handler   = dfu_app_on_dfu_evt;
+    dfus_init.error_handler = NULL;
+    dfus_init.evt_handler   = dfu_app_on_dfu_evt;
+    dfus_init.revision      = DFU_REVISION;
+
+    err_code = ble_dfu_init(&m_dfus, &dfus_init);
+    APP_ERROR_CHECK(err_code);
+
+    dfu_app_reset_prepare_set(reset_prepare);
+    dfu_app_dm_appl_instance_set(m_app_handle);
+    /** @snippet [DFU BLE Service initialization] */
+#endif // BLE_DFU_APP_SUPPORT
 }
 
 
@@ -429,12 +800,26 @@ static void services_init(void)
  */
 //static void sensor_simulator_init(void)
 //{
-//	  m_drhc_sim_cfg.min          = MIN_DRHC_DATA;
-//    m_drhc_sim_cfg.max          = MAX_DRHC_DATA;
-//    m_drhc_sim_cfg.incr         = DRHC_INCREMENT;
-//    m_drhc_sim_cfg.start_at_max = true;
+//    m_battery_sim_cfg.min          = MIN_BATTERY_LEVEL;
+//    m_battery_sim_cfg.max          = MAX_BATTERY_LEVEL;
+//    m_battery_sim_cfg.incr         = BATTERY_LEVEL_INCREMENT;
+//    m_battery_sim_cfg.start_at_max = true;
 
-//    sensorsim_init(&m_drhc_sim_state, &m_drhc_sim_cfg);
+//    sensorsim_init(&m_battery_sim_state, &m_battery_sim_cfg);
+
+//    m_heart_rate_sim_cfg.min          = MIN_HEART_RATE;
+//    m_heart_rate_sim_cfg.max          = MAX_HEART_RATE;
+//    m_heart_rate_sim_cfg.incr         = HEART_RATE_INCREMENT;
+//    m_heart_rate_sim_cfg.start_at_max = false;
+
+//    sensorsim_init(&m_heart_rate_sim_state, &m_heart_rate_sim_cfg);
+
+//    m_rr_interval_sim_cfg.min          = MIN_RR_INTERVAL;
+//    m_rr_interval_sim_cfg.max          = MAX_RR_INTERVAL;
+//    m_rr_interval_sim_cfg.incr         = RR_INTERVAL_INCREMENT;
+//    m_rr_interval_sim_cfg.start_at_max = false;
+
+//    sensorsim_init(&m_rr_interval_sim_state, &m_rr_interval_sim_cfg);
 //}
 
 
@@ -445,9 +830,18 @@ static void application_timers_start(void)
     uint32_t err_code;
 
     // Start application timers.
-		err_code = app_timer_start(m_data_header_report_id, DATA_HEADER_REPORT_INTERVAL, NULL);
-    APP_ERROR_CHECK(err_code);
 	
+    err_code = app_timer_start(m_cal_data_id, CAL_DATA_INTERVAL, NULL);
+    APP_ERROR_CHECK(err_code);
+
+    err_code = app_timer_start(m_adv_timer_id, ADVERTISING_TIMER_INTERVAL, NULL);
+    APP_ERROR_CHECK(err_code);
+
+//    err_code = app_timer_start(m_rr_interval_timer_id, RR_INTERVAL_INTERVAL, NULL);
+//    APP_ERROR_CHECK(err_code);
+
+//    err_code = app_timer_start(m_sensor_contact_timer_id, SENSOR_CONTACT_DETECTED_INTERVAL, NULL);
+//    APP_ERROR_CHECK(err_code);
 }
 
 
@@ -463,14 +857,14 @@ static void application_timers_start(void)
  */
 static void on_conn_params_evt(ble_conn_params_evt_t * p_evt)
 {
-		//uint32_t err_code;
-		
-		// edited by Gill
+    uint32_t err_code;
+
     if (p_evt->evt_type == BLE_CONN_PARAMS_EVT_FAILED)
     {
-        //err_code = sd_ble_gap_disconnect(m_conn_handle, BLE_HCI_CONN_INTERVAL_UNACCEPTABLE);
-        //APP_ERROR_CHECK(err_code);
-			printf("BLE_CONN_PARAMS_EVT_FAILED");
+        err_code = sd_ble_gap_disconnect(m_conn_handle, BLE_HCI_CONN_INTERVAL_UNACCEPTABLE);
+        APP_ERROR_CHECK(err_code);
+			printf("BLE_CONN_PARAMS_EVT_FAILED\r\n");
+			printf("diconnect:%04X",err_code);
     }
 }
 
@@ -498,7 +892,7 @@ static void conn_params_init(void)
     cp_init.first_conn_params_update_delay = FIRST_CONN_PARAMS_UPDATE_DELAY;
     cp_init.next_conn_params_update_delay  = NEXT_CONN_PARAMS_UPDATE_DELAY;
     cp_init.max_conn_params_update_count   = MAX_CONN_PARAMS_UPDATE_COUNT;
-    cp_init.start_on_notify_cccd_handle    = BLE_GATT_HANDLE_INVALID; // add for test
+    //cp_init.start_on_notify_cccd_handle    = m_hrs.hrm_handles.cccd_handle;  // BLE_GATT_HANDLE_INVALID
     cp_init.disconnect_on_fail             = false;
     cp_init.evt_handler                    = on_conn_params_evt;
     cp_init.error_handler                  = conn_params_error_handler;
@@ -540,19 +934,20 @@ static void on_adv_evt(ble_adv_evt_t ble_adv_evt)
     switch (ble_adv_evt)
     {
         case BLE_ADV_EVT_FAST:
+			printf("BLE_ADV_EVT_FAST\r\n");
             err_code = bsp_indication_set(BSP_INDICATE_ADVERTISING);
             APP_ERROR_CHECK(err_code);
+//					adv_on = true;
+//					adv_counter = ADV_DURATION/ADVERTISING_TIMER_DURATION;
             break;
         case BLE_ADV_EVT_IDLE:
-						printf("BLE_ADV_EVT_IDLE\r\n");
+			printf("BLE_ADV_EVT_IDLE\r\n");
             //sleep_mode_enter();
             break;
-				
         default:
             break;
     }
 }
-
 
 
 /**@brief Function for handling the Application's BLE Stack events.
@@ -570,17 +965,18 @@ static void on_ble_evt(ble_evt_t * p_ble_evt)
             APP_ERROR_CHECK(err_code);
             m_conn_handle = p_ble_evt->evt.gap_evt.conn_handle;
 						printf("on_ble_Connected");
+//						adv_on = false;
+//						adv_counter = 0;
             break;
 
         case BLE_GAP_EVT_DISCONNECTED:
             m_conn_handle = BLE_CONN_HANDLE_INVALID;
 						printf("on_ble_Disconnected");
+//						adv_on = true;
+//						adv_counter = ADV_DURATION/ADVERTISING_TIMER_DURATION;
 						//err_code = ble_advertising_start(BLE_ADV_MODE_FAST);
             break;
-//				case BLE_GATTS_EVT_WRITE:
-//						printf("BLE_GATTS_EVT_WRITE\r\n");
-//					 // do things in ble_pbs_on_ble_evt which call from softdevice handler
-//						break;
+
         default:
             // No implementation needed.
             break;
@@ -599,8 +995,15 @@ static void ble_evt_dispatch(ble_evt_t * p_ble_evt)
 {
     dm_ble_evt_handler(p_ble_evt);
 		ble_pbs_on_ble_evt(&m_pbs, p_ble_evt);
+//    ble_hrs_on_ble_evt(&m_hrs, p_ble_evt);
+//    ble_bas_on_ble_evt(&m_bas, p_ble_evt);
     ble_conn_params_on_ble_evt(p_ble_evt);
     bsp_btn_ble_on_ble_evt(p_ble_evt);
+#ifdef BLE_DFU_APP_SUPPORT
+    /** @snippet [Propagating BLE Stack events to DFU Service] */
+    ble_dfu_on_ble_evt(&m_dfus, p_ble_evt);
+    /** @snippet [Propagating BLE Stack events to DFU Service] */
+#endif // BLE_DFU_APP_SUPPORT
     on_ble_evt(p_ble_evt);
     ble_advertising_on_ble_evt(p_ble_evt);
 }
@@ -637,9 +1040,9 @@ static void ble_stack_init(void)
                                                     &ble_enable_params);
     APP_ERROR_CHECK(err_code);
 
-//#ifdef BLE_DFU_APP_SUPPORT
-//    ble_enable_params.gatts_enable_params.service_changed = 1;
-//#endif // BLE_DFU_APP_SUPPORT
+#ifdef BLE_DFU_APP_SUPPORT
+    ble_enable_params.gatts_enable_params.service_changed = 1;
+#endif // BLE_DFU_APP_SUPPORT
     //Check the ram settings against the used number of links
     CHECK_RAM_START_ADDR(CENTRAL_LINK_COUNT,PERIPHERAL_LINK_COUNT);
 
@@ -667,7 +1070,7 @@ void bsp_event_handler(bsp_event_t event)
     switch (event)
     {
         case BSP_EVENT_SLEEP:
-					printf("BSP_EVENT_SLEEP\r\n");
+			printf("BSP_EVENT_SLEEP\r\n");
             sleep_mode_enter();
             break;
 
@@ -704,6 +1107,14 @@ static uint32_t device_manager_evt_handler(dm_handle_t const * p_handle,
                                            ret_code_t        event_result)
 {
     APP_ERROR_CHECK(event_result);
+
+#ifdef BLE_DFU_APP_SUPPORT
+    if (p_event->event_id == DM_EVT_LINK_SECURED)
+    {
+        app_context_load(p_handle);
+    }
+#endif // BLE_DFU_APP_SUPPORT
+
     return NRF_SUCCESS;
 }
 
@@ -768,59 +1179,24 @@ static void advertising_init(void)
 }
 
 
-// Gill add 
-//static void ble_advertising_error_handler(uint32_t nrf_error)
-//{
-//    APP_ERROR_HANDLER(nrf_error);
-//}
-
-//static void advertising_init(void)
-//{
-//    uint32_t       err_code;
-//    uint8_t        adv_flags;
-//    ble_advdata_t  advdata;
-
-//    // Build and set advertising data
-//    memset(&advdata, 0, sizeof(advdata));
-
-//    adv_flags                       = BLE_GAP_ADV_FLAGS_LE_ONLY_LIMITED_DISC_MODE;
-//    advdata.name_type               = BLE_ADVDATA_FULL_NAME;
-//    advdata.include_appearance      = true;
-//    advdata.flags                   = adv_flags;
-//    advdata.uuids_complete.uuid_cnt = sizeof(m_adv_uuids) / sizeof(m_adv_uuids[0]);
-//    advdata.uuids_complete.p_uuids  = m_adv_uuids;
-
-//    ble_adv_modes_config_t options =
-//    {
-//        BLE_ADV_WHITELIST_ENABLED,
-//        BLE_ADV_DIRECTED_ENABLED, 
-//        BLE_ADV_DIRECTED_SLOW_DISABLED, 0,0,
-//        BLE_ADV_FAST_ENABLED, APP_ADV_FAST_INTERVAL, APP_ADV_FAST_TIMEOUT,
-//        BLE_ADV_SLOW_ENABLED, APP_ADV_SLOW_INTERVAL, APP_ADV_SLOW_TIMEOUT
-//    };
-
-//    err_code = ble_advertising_init(&advdata, NULL, &options, on_adv_evt, ble_advertising_error_handler);
-//    APP_ERROR_CHECK(err_code);
-//}
-
 /**@brief Function for initializing buttons and leds.
  *
  * @param[out] p_erase_bonds  Will be true if the clear bonding button was pressed to wake the application up.
  */
-//static void buttons_leds_init(bool * p_erase_bonds)
-//{
-//    bsp_event_t startup_event;
+static void buttons_leds_init(bool * p_erase_bonds)
+{
+    bsp_event_t startup_event;
 
-//    uint32_t err_code = bsp_init(BSP_INIT_LED | BSP_INIT_BUTTONS,
-//                                 APP_TIMER_TICKS(100, APP_TIMER_PRESCALER),
-//                                 bsp_event_handler);
-//    APP_ERROR_CHECK(err_code);
+    uint32_t err_code = bsp_init(BSP_INIT_LED | BSP_INIT_BUTTONS,
+                                 APP_TIMER_TICKS(100, APP_TIMER_PRESCALER),
+                                 bsp_event_handler);
+    APP_ERROR_CHECK(err_code);
 
-//    err_code = bsp_btn_ble_init(NULL, &startup_event);
-//    APP_ERROR_CHECK(err_code);
+    err_code = bsp_btn_ble_init(NULL, &startup_event);
+    APP_ERROR_CHECK(err_code);
 
-//    *p_erase_bonds = (startup_event == BSP_EVENT_CLEAR_BONDING_DATA);
-//}
+    *p_erase_bonds = (startup_event == BSP_EVENT_CLEAR_BONDING_DATA);
+}
 
 
 /**@brief Function for the Power manager.
@@ -831,51 +1207,6 @@ static void power_manage(void)
     APP_ERROR_CHECK(err_code);
 }
 
-/**
- * @brief UART events handler.
- */
-static void uart_events_handler(app_uart_evt_t * p_event)
-{
-    switch (p_event->evt_type)
-    {
-        case APP_UART_COMMUNICATION_ERROR:
-            APP_ERROR_HANDLER(p_event->data.error_communication);
-            break;
-
-        case APP_UART_FIFO_ERROR:
-            APP_ERROR_HANDLER(p_event->data.error_code);
-            break;
-
-        default:
-            break;
-    }
-}
-/**
- * @brief UART initialization.
- */
-static void uart_config(void)
-{
-    uint32_t                     err_code;
-    const app_uart_comm_params_t comm_params =
-    {
-        RX_PIN_NUMBER,
-        TX_PIN_NUMBER,
-        RTS_PIN_NUMBER,
-        CTS_PIN_NUMBER,
-        APP_UART_FLOW_CONTROL_DISABLED,
-        false,
-        UART_BAUDRATE_BAUDRATE_Baud115200
-    };
-
-    APP_UART_FIFO_INIT(&comm_params,
-                       UART_RX_BUF_SIZE,
-                       UART_TX_BUF_SIZE,
-                       uart_events_handler,
-                       APP_IRQ_PRIORITY_LOW,
-                       err_code);
-
-    APP_ERROR_CHECK(err_code);
-}
 
 /**@brief Function for application main entry.
  */
@@ -883,50 +1214,47 @@ int main(void)
 {
     uint32_t err_code;
     bool erase_bonds;
-		
-    // Initialize.
-		uart_config();
-    app_trace_init();
-		printf("Uart start\r\n");
-    timers_init();
-    application_timers_start();
-//    buttons_leds_init(&erase_bonds);
-//    ble_stack_init();
-//    device_manager_init(erase_bonds);
-//    gap_params_init();
-//    advertising_init();
-//    services_init();
-//    conn_params_init();
 
-//		//tx power set test
-//		uint32_t tx_power = 4;
-//		sd_ble_gap_tx_power_set(tx_power);
-	
-		//sensor initiate
-		//read_adc_init();
-		button_led_init();	
+    // Initialize.
+		uart_init();
+    app_trace_init();
+    timers_init();
+    buttons_leds_init(&erase_bonds);
+    ble_stack_init();
+    device_manager_init(erase_bonds);
+    gap_params_init();
+    advertising_init();
+    services_init();
+    //sensor_simulator_init();
+    conn_params_init();
+
+    // Start execution.
+    application_timers_start();
+		
+		// Set tx power before advertising
+		err_code = sd_ble_gap_tx_power_set(DEFAULT_BLE_TX_POWER);
+		printf("tx_power_set:%04X\r\n",err_code);
+//nrf_delay_ms(1000);//application system warm up time
+    err_code = ble_advertising_start(BLE_ADV_MODE_FAST);
+//		adv_on = true;
+//		adv_counter = ADV_DURATION/ADVERTISING_TIMER_DURATION;
+    APP_ERROR_CHECK(err_code);
+
+		button_led_init();
 		lis2dh12_init();
 		flash_data_set_init();
+//		uart_init();
 		event_sampling_interval_set(1000/DEFAULT_HZ);//set default 20 (50Hz) here
-	
 		nrf_delay_ms(1000);//application system warm up time
-		//event_detection_routine();
-
-//		adv_counter = ADV_TOTAL_DURATION/TIMER_DURATION;
-//    err_code = ble_start_advertising(BLE_ADV_MODE_FAST);
-//		APP_ERROR_CHECK(err_code);
-//#if MAIN_DEBUG
-//		printf("ADV start\r\n");
-//#endif
-    while (true)
+//		nrf_drv_gpiote_out_clear(25);
+//		nrf_drv_gpiote_out_clear(26);
+    // Enter main loop.
+    for (;;)
     {
 				event_detection_routine();
+				data_process();
+				advertising_duration_handle();
         __WFI();			
-    }
-    
-    // Enter main loop.
-//    for (;;)
-//    {			
 //        power_manage();
-//    }
+    }
 }

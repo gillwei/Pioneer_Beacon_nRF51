@@ -36,18 +36,6 @@ typedef struct
 {
 	// Value Update Flag
 	uint8_t flag;
-	// Value Setting 
-	int16_t sampling_frequency;
-	int16_t ambient_sensor_value;
-	int16_t acc_voltage;
-	int16_t ble_output_power;
-	uint32_t current_utc;
-}bsc_t;
-
-typedef struct
-{
-	// Value Update Flag
-	uint8_t flag;
 	// Value Setting
 	uint16_t small_accident_level_x;
 	uint16_t small_accident_level_y;
@@ -58,6 +46,18 @@ typedef struct
 	uint16_t hard_steering_level_left;
 	uint16_t hard_steering_level_right;
 }tsc_t;
+
+typedef struct
+{
+	// Value Update Flag
+	uint8_t flag;
+	// Value Setting 
+	int16_t sampling_frequency;
+	int16_t ambient_sensor_value;
+	int16_t acc_voltage;
+	int16_t ble_output_power;
+	uint32_t current_utc;
+}bsc_t;
 
 typedef struct
 {
@@ -73,6 +73,7 @@ typedef struct
 	uint8_t recorded_event_id;
 	uint8_t	recorded_event_duration;
 	uint32_t recorded_utc_of_event_start;
+	uint8_t *sensor_data_offset;
 }drhc_t;
 
 typedef struct
@@ -94,21 +95,27 @@ typedef struct
 {
 	uint8_t advertising_period;
 	uint8_t advertising_duration;
-	uint8_t advertising_interval;
+	uint16_t bdc_advertising_interval;
 }bdc_t;
 
 // Button Data Report
 typedef struct
 {
 	uint8_t advertising_time;
-	uint8_t advertising_interval;
+	uint16_t bdrc_advertising_interval;
 	uint8_t button_status;
 }bdrc_t;
 
+//typedef enum
+//{
+//    BLE_PBS_EVT_INDICATION_ENABLED,                             /**< Battery value notification enabled event. */
+//    BLE_PBS_EVT_INDICATION_DISABLED,                             /**< Battery value notification disabled event. */
+//		BLE_PBS_EVT_INDICATION_CONFIRMED                                        /**< Confirmation of a temperature measurement indication has been received. */
+//} ble_pbs_evt_type_t;
 typedef enum
 {
     BLE_PBS_EVT_NOTIFICATION_ENABLED,                             /**< Battery value notification enabled event. */
-    BLE_PBS_EVT_NOTIFICATION_DISABLED                             /**< Battery value notification disabled event. */
+    BLE_PBS_EVT_NOTIFICATION_DISABLED,                             /**< Battery value notification disabled event. */
 } ble_pbs_evt_type_t;
 
 /**@brief PBS event. */
@@ -157,6 +164,7 @@ struct ble_pbs_s
 	ble_srv_cccd_security_mode_t pbs_cccd_md;
 	uint16_t                      conn_handle;                    /**< Handle of the current connection (as provided by the BLE stack, is BLE_CONN_HANDLE_INVALID if not in a connection). */
 	ble_gatts_char_handles_t      bsc_handles;
+	ble_gatts_char_handles_t      tsc_handles;
 	ble_gatts_char_handles_t      esc_handles;                      /**<Event Storage Characteristic handle>**/
 	ble_gatts_char_handles_t      drhc_handles;
 	ble_gatts_char_handles_t      cdrc_handles;

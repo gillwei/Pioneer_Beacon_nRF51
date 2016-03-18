@@ -6,6 +6,8 @@ ble_app_hrs/pca10040/ble_app_hrs_s132_pca10040.uvguix.GillWei
 ble_app_hrs/pca10036/s132/arm5_no_packs/_build/
 ble_app_hrs/pca10036/s132/arm5_no_packs/*.uvguix*
 ble_app_hrs/pca10036/s132/arm5_no_packs/*.uvoptx
+ble_app_hrs/APP_config/license.txt
+
 
 
 

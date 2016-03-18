@@ -371,7 +371,7 @@
             <vShortWch>0</vShortWch>
             <VariousControls>
               <MiscControls>--c99</MiscControls>
-              <Define>BLE_STACK_SUPPORT_REQD NRF52_PAN_53 NRF52_PAN_15 NRF52_PAN_54 NRF52_PAN_20 NRF52_PAN_55 NRF52_PAN_30 NRF52_PAN_58 NRF52_PAN_31 NRF52_PAN_62 NRF52_PAN_36 NRF52_PAN_63 NRF52_PAN_51 NRF52_PAN_64 CONFIG_GPIO_AS_PINRESET BOARD_PCA10040 NRF52_PAN_12 S132 SWI_DISABLE0 NRF52 SOFTDEVICE_PRESENT NRF_LOG_USES_UART=1 ENABLE_DEBUG_LOG_SUPPORT DM_DISABLE_LOGS</Define>
+              <Define>BLE_STACK_SUPPORT_REQD NRF52_PAN_53 NRF52_PAN_15 NRF52_PAN_54 NRF52_PAN_20 NRF52_PAN_55 NRF52_PAN_30 NRF52_PAN_58 NRF52_PAN_31 NRF52_PAN_62 NRF52_PAN_36 NRF52_PAN_63 NRF52_PAN_51 NRF52_PAN_64 CONFIG_GPIO_AS_PINRESET BOARD_PCA10040 NRF52_PAN_12 S132 SWI_DISABLE0 NRF52 SOFTDEVICE_PRESENT NRF_LOG_USES_UART=1 ENABLE_DEBUG_LOG_SUPPORT DM_DISABLE_LOGS CONFIG_NFCT_PINS_AS_GPIOS</Define>
               <Undefine></Undefine>
               <IncludePath>..\APP_config;..\config\ble_app_hrs_s132_pca10040;..\config;..\..\components\ble\ble_advertising;..\..\components\ble\ble_services\ble_bas;..\..\components\ble\ble_services\ble_hrs;..\..\components\ble\ble_services\ble_dis;..\..\components\ble\common;..\..\components\ble\device_manager;..\..\components\drivers_ext\segger_rtt;..\..\components\drivers_nrf\common;..\..\components\drivers_nrf\config;..\..\components\drivers_nrf\delay;..\..\components\drivers_nrf\gpiote;..\..\components\drivers_nrf\hal;..\..\components\drivers_nrf\pstorage;..\..\components\drivers_nrf\uart;..\..\components\libraries\button;..\..\components\libraries\fifo;..\..\components\libraries\sensorsim;..\..\components\libraries\timer;..\..\components\libraries\trace;..\..\components\libraries\uart;..\..\components\libraries\util;..\..\components\softdevice\common\softdevice_handler;..\..\components\softdevice\s132\headers;..\..\components\softdevice\s132\headers\nrf52;..\..\components\toolchain;..\..\bsp;..\int_flash;..\ble_pbs;..\..\components\drivers_nrf\ppi;..\..\components\drivers_nrf\saadc;..\..\components\drivers_nrf\timer;..\..\components\drivers_nrf\spi_master;..\..\components\libraries\util</IncludePath>
             </VariousControls>
@@ -447,14 +447,9 @@
               <FilePath>..\APP_config\lis2dh12.c</FilePath>
             </File>
             <File>
-              <FileName>read_adc.c</FileName>
+              <FileName>spi_flash_MXIC.c</FileName>
               <FileType>1</FileType>
-              <FilePath>..\APP_config\read_adc.c</FilePath>
-            </File>
-            <File>
-              <FileName>spi_flash.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\APP_config\spi_flash.c</FilePath>
+              <FilePath>..\APP_config\spi_flash_MXIC.c</FilePath>
             </File>
           </Files>
         </Group>
@@ -535,11 +530,6 @@
               <FileName>app_uart_fifo.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\..\components\libraries\uart\app_uart_fifo.c</FilePath>
-            </File>
-            <File>
-              <FileName>nrf_drv_saadc.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\..\components\drivers_nrf\saadc\nrf_drv_saadc.c</FilePath>
             </File>
             <File>
               <FileName>nrf_saadc.c</FileName>
@@ -1097,14 +1087,9 @@
               <FilePath>..\APP_config\lis2dh12.c</FilePath>
             </File>
             <File>
-              <FileName>read_adc.c</FileName>
+              <FileName>spi_flash_MXIC.c</FileName>
               <FileType>1</FileType>
-              <FilePath>..\APP_config\read_adc.c</FilePath>
-            </File>
-            <File>
-              <FileName>spi_flash.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\APP_config\spi_flash.c</FilePath>
+              <FilePath>..\APP_config\spi_flash_MXIC.c</FilePath>
             </File>
           </Files>
         </Group>
@@ -1185,11 +1170,6 @@
               <FileName>app_uart_fifo.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\..\components\libraries\uart\app_uart_fifo.c</FilePath>
-            </File>
-            <File>
-              <FileName>nrf_drv_saadc.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\..\components\drivers_nrf\saadc\nrf_drv_saadc.c</FilePath>
             </File>
             <File>
               <FileName>nrf_saadc.c</FileName>

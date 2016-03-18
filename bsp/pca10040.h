@@ -62,8 +62,8 @@
 
 #define BUTTONS_MASK   0x001E0000
 
-#define RX_PIN_NUMBER  8
-#define TX_PIN_NUMBER  6
+#define RX_PIN_NUMBER  23
+#define TX_PIN_NUMBER  24
 #define CTS_PIN_NUMBER 7
 #define RTS_PIN_NUMBER 5
 #define HWFC           true
@@ -73,25 +73,15 @@
 #define SPIS_MOSI_PIN   25  // SPI MOSI signal.
 #define SPIS_SCK_PIN    29  // SPI SCK signal.
 
-//#define SPIM0_SCK_PIN   29  // SPI clock GPIO pin number.
-//#define SPIM0_MOSI_PIN  25  // SPI Master Out Slave In GPIO pin number.
-//#define SPIM0_MISO_PIN  28  // SPI Master In Slave Out GPIO pin number.
-//#define SPIM0_SS_PIN    12  // SPI Slave Select GPIO pin number.
+//Tsungta, 1/27/16
+#define SPIM0_SCK_PIN   13  // SPI clock GPIO pin number.
+#define SPIM0_MOSI_PIN  10  // SPI Master Out Slave In GPIO pin number. (SDI of slave)
+#define SPIM0_MISO_PIN  11  // SPI Master In Slave Out GPIO pin number. (SDO of slave)
+#define SPIM0_SS_PIN    12  // SPI Slave Select GPIO pin number.
 
-//#define SPIM1_SCK_PIN   2   // SPI clock GPIO pin number.
-//#define SPIM1_MOSI_PIN  3   // SPI Master Out Slave In GPIO pin number.
-//#define SPIM1_MISO_PIN  4   // SPI Master In Slave Out GPIO pin number.
-//#define SPIM1_SS_PIN    5   // SPI Slave Select GPIO pin number.
-
-//Tsungta define 
-#define SPIM0_SCK_PIN   28  // SPI clock GPIO pin number.
-#define SPIM0_MOSI_PIN  29  // SPI Master Out Slave In GPIO pin number.
-#define SPIM0_MISO_PIN  30  // SPI Master In Slave Out GPIO pin number.
-#define SPIM0_SS_PIN    31  // SPI Slave Select GPIO pin number.
-
-#define SPIM1_SCK_PIN   2   // SPI clock GPIO pin number.
-#define SPIM1_MOSI_PIN  3   // SPI Master Out Slave In GPIO pin number.
-#define SPIM1_MISO_PIN  4   // SPI Master In Slave Out GPIO pin number.
+#define SPIM1_SCK_PIN   8//2   // SPI clock GPIO pin number.
+#define SPIM1_MOSI_PIN  7//3   // SPI Master Out Slave In GPIO pin number.
+#define SPIM1_MISO_PIN  6//4   // SPI Master In Slave Out GPIO pin number.
 #define SPIM1_SS_PIN    5   // SPI Slave Select GPIO pin number.
 
 #define SPIM2_SCK_PIN   12  // SPI clock GPIO pin number.
