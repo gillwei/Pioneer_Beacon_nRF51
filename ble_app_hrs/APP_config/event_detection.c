@@ -25,6 +25,8 @@ uint8_t current_event_ID = 0;
 uint32_t tt, last_tt, cnt, Ecnt;
 bool t_lock = false;
 
+uint32_t sim_cnt = 50 * 12;
+
 enum{
 	NO_EVENT=0,  
 	DANG_LEFT,
@@ -184,6 +186,13 @@ void event_detection_routine(void)
 			Accy_avg/=(moving_avg_size_ms/sensor_internal_ms);
 
 			w_event_ID = accident_dangerous_detection(cal_acc_test[0]-offset_xyz[0], cal_acc_test[1]-offset_xyz[1], Accx_avg-offset_xyz[0], Accy_avg-offset_xyz[1]);
+			if(sim_cnt-- == 0) {
+				sim_cnt = 50 *12;
+				w_event_ID = 6;
+			} else {
+				w_event_ID = 0;
+			}
+			
 			flash_data_set_write(acc_test, cal_acc_test, w_event_ID);
 			
 			if(current_event_ID_get() == NO_EVENT)

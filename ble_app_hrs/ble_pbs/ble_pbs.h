@@ -116,6 +116,9 @@ typedef enum
 {
     BLE_PBS_EVT_NOTIFICATION_ENABLED,                             /**< Battery value notification enabled event. */
     BLE_PBS_EVT_NOTIFICATION_DISABLED,                             /**< Battery value notification disabled event. */
+		BLE_PBS_EVT_INDICATION_ENABLED,                                         
+    BLE_PBS_EVT_INDICATION_DISABLED,                              
+    BLE_PBS_EVT_INDICATION_CONFIRMED 
 } ble_pbs_evt_type_t;
 
 /**@brief PBS event. */
@@ -193,6 +196,7 @@ uint32_t ble_pbs_init(ble_pbs_t * p_pbs);
 uint32_t ble_pbs_esc_update(ble_pbs_t * p_pbs, uint8_t *esc_data);
 uint32_t ble_pbs_drhc_update(ble_pbs_t * p_pbs, uint8_t *dhrc_data);
 uint32_t ble_pbs_cdrc_update(ble_pbs_t * p_pbs, uint8_t *cdrc_data);
+uint32_t ble_pbs_bdrc_update(ble_pbs_t * p_pbs, uint8_t *bdc_data);
 void ble_pbs_on_ble_evt(ble_pbs_t * p_pbs, ble_evt_t * p_ble_evt);
 
 uint32_t ble_pbs_cdrc_update(ble_pbs_t * p_pbs, uint8_t *cdrc_data);

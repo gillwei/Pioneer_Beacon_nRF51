@@ -75,6 +75,9 @@ bool start_dw_flag = false;
 bool drhc_notify_flag = false;
 bool cdrc_notify_flag = false;
 bool rdrc_notify_flag = false;
+bool bdrc_notify_flag = false;
+extern ble_pbs_t m_pbs;
+	
 
 // Encode All Characteristics' Data
 static uint8_t uint16_big_encode(uint16_t value, uint8_t * p_encoded_data)
@@ -162,7 +165,7 @@ static void bdc_data_encode(uint8_t * p_encoded_buffer, const bdc_t * p_bdc)
 		p_encoded_buffer[len++] = p_bdc->advertising_duration;
 		len += uint16_big_encode(p_bdc->bdc_advertising_interval, &p_encoded_buffer[len]);
 }
-static void bdrc_data_encode(uint8_t * p_encoded_buffer, const bdrc_t * p_bdrc)
+void bdrc_data_encode(uint8_t * p_encoded_buffer, const bdrc_t * p_bdrc)
 {
 		uint8_t len = 0;
 		APP_ERROR_CHECK_BOOL(p_bdrc != NULL);
@@ -186,6 +189,10 @@ static void bsc_data_process(const uint8_t * p_encoded_buffer, bsc_t * p_bsc)
 	{
 		confirmation_led();
 	}
+//	if (update_sampling_freqency == 0x04)
+//	{
+//		p_bsc->sampling_frequency = uint16_big_decode();
+//	}
 	if (update_current_utc == 0x08)
 	{
 		uint32_t tempUTC = uint32_big_decode(p_encoded_buffer+9);
@@ -193,25 +200,12 @@ static void bsc_data_process(const uint8_t * p_encoded_buffer, bsc_t * p_bsc)
 		p_bsc->current_utc = tempUTC;
 		printf("UTC:%08X\r\n",tempUTC);
 	}
-	// Set BSC data to server
-//	uint32_t err_code = NRF_SUCCESS;
-//    ble_gatts_value_t gatts_value;
-//		
-//		// Initialize value struct.
-//		memset(&gatts_value, 0, sizeof(gatts_value));
+}
 
-//		gatts_value.len     = BSC_ALLDATA_LENGTH;
-//		gatts_value.offset  = 0;
-//		gatts_value.p_value = p_encoded_buffer;
-
-//		// Update database.
-//		err_code = sd_ble_gatts_value_set(p_pbs->conn_handle,
-//																			p_pbs->drhc_handles.value_handle,
-//																			&gatts_value);
-//#if PBS_DEBUG
-//		printf("bsc set value err:%04X\r\n",err_code);
-//#endif
-	
+static void bdrc_data_decode(const uint8_t * p_encoded_buffer, bdrc_t * p_bdrc)
+{
+	p_bdrc->advertising_time = p_encoded_buffer[0];
+	p_bdrc->bdrc_advertising_interval = uint16_big_decode(p_encoded_buffer+1);
 }
 //static void tsc_data_decode(uint8_t * p_decoded_buffer, const tsc_t * p_tsc)
 //{
@@ -323,8 +317,8 @@ uint32_t ble_pbs_drhc_update(ble_pbs_t * p_pbs, uint8_t *drhc_data)
 				memset(&hvx_params, 0, sizeof(hvx_params));
 
 				hvx_params.handle = p_pbs->drhc_handles.value_handle;
-				//hvx_params.type   = BLE_GATT_HVX_INDICATION;
-				hvx_params.type   =  BLE_GATT_HVX_NOTIFICATION;
+				hvx_params.type   = BLE_GATT_HVX_INDICATION;
+				//hvx_params.type   =  BLE_GATT_HVX_NOTIFICATION;
 				hvx_params.offset = gatts_value.offset;
 				hvx_params.p_len  = &gatts_value.len;
 				hvx_params.p_data = gatts_value.p_value;
@@ -386,6 +380,52 @@ uint32_t ble_pbs_esc_update(ble_pbs_t * p_pbs, uint8_t* esc_data)
 		}
     return err_code;
 }
+uint32_t ble_pbs_bdrc_update(ble_pbs_t * p_pbs, uint8_t* bdrc_data)
+{
+    if (p_pbs == NULL)
+    {
+        return NRF_ERROR_NULL;
+    }
+    
+    uint32_t err_code = NRF_SUCCESS;
+    ble_gatts_value_t gatts_value;
+		
+		// Initialize value struct.
+		memset(&gatts_value, 0, sizeof(gatts_value));
+
+		gatts_value.len     = BDRC_ALLDATA_LENGTH;
+		gatts_value.offset  = 0;
+		gatts_value.p_value = bdrc_data;
+
+		// Update database.
+		err_code = sd_ble_gatts_value_set(p_pbs->conn_handle,
+																			p_pbs->bdrc_handles.value_handle,
+																			&gatts_value);
+#if PBS_DEBUG
+		printf("bdrc set value err:%04X\r\n",err_code);
+#endif
+		// Send value if connected and notifying.
+		//if ((p_bas->conn_handle != BLE_CONN_HANDLE_INVALID) && p_bas->is_notification_supported)
+		if (p_pbs->conn_handle != BLE_CONN_HANDLE_INVALID)
+		{
+				ble_gatts_hvx_params_t hvx_params;
+
+				memset(&hvx_params, 0, sizeof(hvx_params));
+
+				hvx_params.handle = p_pbs->bdrc_handles.value_handle;
+				hvx_params.type   = BLE_GATT_HVX_INDICATION;
+				hvx_params.offset = gatts_value.offset;
+				hvx_params.p_len  = &gatts_value.len;
+				hvx_params.p_data = gatts_value.p_value;
+
+				err_code = sd_ble_gatts_hvx(p_pbs->conn_handle, &hvx_params);
+#if PBS_DEBUG
+			printf("bdrc indicate value err:%04X\r\n",err_code);
+#endif
+		}
+    return err_code;
+}
+
 static void on_pbs_cdrc_cccd_write(ble_pbs_t * p_pbs, ble_gatts_evt_write_t * p_evt_write)
 {
     if (p_evt_write->len == 2)
@@ -409,18 +449,18 @@ static void on_pbs_cdrc_cccd_write(ble_pbs_t * p_pbs, ble_gatts_evt_write_t * p_
     }
 }
 // FOR INDICATION
-//static void on_hvc(ble_pbs_t * p_pbs, ble_evt_t * p_ble_evt)
-//{
-//    ble_gatts_evt_hvc_t * p_hvc = &p_ble_evt->evt.gatts_evt.params.hvc;
+static void on_hvc(ble_pbs_t * p_pbs, ble_evt_t * p_ble_evt)
+{
+    ble_gatts_evt_hvc_t * p_hvc = &p_ble_evt->evt.gatts_evt.params.hvc;
 
-//    if (p_hvc->handle == p_pbs->cdrc_handles.value_handle)
-//    {
-//        ble_pbs_evt_t evt;
+    if (p_hvc->handle == p_pbs->cdrc_handles.value_handle)
+    {
+        ble_pbs_evt_t evt;
 
-//        evt.evt_type = BLE_PBS_EVT_INDICATION_CONFIRMED;
-//        p_pbs->evt_handler(p_pbs, &evt);
-//    }
-//}
+        evt.evt_type = BLE_PBS_EVT_INDICATION_CONFIRMED;
+        p_pbs->evt_handler(p_pbs, &evt);
+    }
+}
 
 uint32_t ble_pbs_cdrc_update(ble_pbs_t * p_pbs, uint8_t* cdrc_data)
 {
@@ -444,7 +484,7 @@ uint32_t ble_pbs_cdrc_update(ble_pbs_t * p_pbs, uint8_t* cdrc_data)
 																			p_pbs->cdrc_handles.value_handle,
 																			&gatts_value);
 #if PBS_DEBUG
-		printf("cdrc set value err:%04X\r\n",err_code);
+		//printf("cdrc set value err:%04X\r\n",err_code);
 #endif
 		// Send value if connected and notifying.
 		//if ((p_bas->conn_handle != BLE_CONN_HANDLE_INVALID) && p_bas->is_notification_supported)
@@ -463,7 +503,7 @@ uint32_t ble_pbs_cdrc_update(ble_pbs_t * p_pbs, uint8_t* cdrc_data)
 
 				err_code = sd_ble_gatts_hvx(p_pbs->conn_handle, &hvx_params);
 #if PBS_DEBUG
-			printf("cdrc indicate value err:%04X\r\n",err_code);
+			//printf("cdrc indicate value err:%04X\r\n",err_code);
 #endif
 		}
     return err_code;
@@ -488,6 +528,7 @@ ble_gatts_evt_write_t * p_evt_write = &p_ble_evt->evt.gatts_evt.params.write;
 		bsc_data_process(tempData, &p_pbs->bsc_s);
 	}
 	
+	
 	// write to esc
 //		if (tempHandle == p_pbs->esc_handles.value_handle) 
 //		{	
@@ -508,9 +549,9 @@ ble_gatts_evt_write_t * p_evt_write = &p_ble_evt->evt.gatts_evt.params.write;
         if ( p_evt_write->len == 2)
 				{
 					esc_notify_flag = !esc_notify_flag;
-#if PBS_DEBUG
-					printf("esc_notify_flag:%d\r\n",esc_notify_flag);
-#endif
+//#if PBS_DEBUG
+//					printf("esc_notify_flag:%d\r\n",esc_notify_flag);
+//#endif
 				}
 		}	
 		if ((tempHandle == p_pbs->drhc_handles.cccd_handle) && (p_evt_write->len == 2))
@@ -519,23 +560,25 @@ ble_gatts_evt_write_t * p_evt_write = &p_ble_evt->evt.gatts_evt.params.write;
 #if PBS_DEBUG
 					printf("drhc_notify_flag:%d\r\n",drhc_notify_flag);
 #endif	
-		}	
+		}
+		
 		if ((tempHandle == p_pbs->cdrc_handles.cccd_handle) && (p_evt_write->len == 2))
     {
+			
 					cdrc_notify_flag = !cdrc_notify_flag;
-//				uint32_t err_code;
-//				uint32_t tempUTC = UTC_get();
-//				uint8_t p_tempUTC[4]; 
-//				uint32_encode(tempUTC,p_tempUTC);
-//				uint8_t sim_drhc_data[9] = {20,12,3,1,9,p_tempUTC[0],p_tempUTC[1],p_tempUTC[2],p_tempUTC[3]};
-//				err_code = ble_pbs_drhc_update(p_pbs, sim_drhc_data);
-//				printf("drhc_update:%04X\r\n",err_code);
-//        on_pbs_cdrc_cccd_write(p_pbs, p_evt_write);
 #if PBS_DEBUG
 					printf("cdrc_notify_flag:%d\r\n",cdrc_notify_flag);
 #endif
-		}		
+		}
 		
+		if ((tempHandle == p_pbs->bdrc_handles.cccd_handle) && (p_evt_write->len == 2))
+    {
+					bdrc_notify_flag = !bdrc_notify_flag;
+		}
+		if (tempHandle == p_pbs->bdrc_handles.value_handle)
+		{
+			bdrc_data_decode(tempData, &p_pbs->bdrc_s);
+		}
 }
 
 void ble_pbs_on_ble_evt(ble_pbs_t * p_pbs, ble_evt_t * p_ble_evt)
@@ -561,10 +604,10 @@ void ble_pbs_on_ble_evt(ble_pbs_t * p_pbs, ble_evt_t * p_ble_evt)
             on_write(p_pbs, p_ble_evt);
             break;
 				
-//				case BLE_GATTS_EVT_HVC:
-//					printf("pbs_on_ble_EVT_HVC\r\n");
-//            on_hvc(p_pbs, p_ble_evt);
-//            break;
+				case BLE_GATTS_EVT_HVC:
+					printf("pbs_on_ble_EVT_HVC\r\n");
+            on_hvc(p_pbs, p_ble_evt);
+            break;
 
         default:
             // No implementation needed.
@@ -684,8 +727,8 @@ uint32_t ble_pbs_init(ble_pbs_t * p_pbs)
 		drhc_data_encode(encoded_drhc_data, &p_pbs->drhc_s);
 		char_md_temp.char_props.read  = 1;
 		char_md_temp.char_props.write = 0;
-		char_md_temp.char_props.indicate = 0;
-		char_md_temp.char_props.notify = 1;
+		char_md_temp.char_props.indicate = 1;
+		char_md_temp.char_props.notify = 0;
 		char_md_temp.p_cccd_md = &cccd_md;
 		char_err_code = pbs_char_add(char_md_temp,
 														char_uuid_temp,

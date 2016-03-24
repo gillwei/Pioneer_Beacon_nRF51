@@ -7,8 +7,8 @@
 #include "nrf_drv_timer.h"
 const nrf_drv_timer_t TIMER_GPIO = NRF_DRV_TIMER_INSTANCE(1);
 
-#define R_LED_PIN				25
-#define G_LED_PIN				26
+#define G_LED_PIN				25
+#define R_LED_PIN				26
 #define BUTTON_1stPIN		27
 #define BUTTON_2ndPIN		28
 #define TIMER1_TICK_MS	50
@@ -17,6 +17,7 @@ uint32_t UTC = 0;
 uint8_t count_down_1s_xHz = 1*(1000/TIMER1_TICK_MS);
 
 int button_pressing_counter = 0;
+int button_releasing_counter = 0;
 int g_led_on_countdown = 0;
 
 #define CONFIRMATION_PATTERN_LENGTH	9
@@ -49,6 +50,21 @@ uint16_t r_led_pattern_S_accident_cnt = 0;
 
 extern int offset_roll_pitch_period_ms;
 
+enum{
+	NO_BUTTON_PUSH=0,  
+	SHORT_BUTTON_PUSH,
+	LONG_BUTTON_PUSH
+};
+
+uint8_t button_status;
+
+uint8_t button_status_get(void)
+{		
+		uint8_t ret = button_status;
+		button_status = NO_BUTTON_PUSH;	// Set the status to no button push after this function has been called since upper layer only need to be modify once
+		return ret;
+}
+
 void UTC_set(uint32_t currentUTC)
 {	
 		UTC = currentUTC;
@@ -72,6 +88,8 @@ void timer1_event_handler(nrf_timer_event_t event_type, void* p_context)
 							count_down_1s_xHz = 1*(1000/TIMER1_TICK_MS);
 						}
 						button_pressing_counter++;
+						if (button_releasing_counter++ > 1000/TIMER1_TICK_MS) button_status = NO_BUTTON_PUSH;
+						
 						if (g_led_on_countdown) {
 							if(--g_led_on_countdown)
 								nrf_drv_gpiote_out_clear(G_LED_PIN);
@@ -179,10 +197,15 @@ void HtoL_pin_handler(nrf_drv_gpiote_pin_t pin, nrf_gpiote_polarity_t action)
 
 void LtoH_pin_handler(nrf_drv_gpiote_pin_t pin, nrf_gpiote_polarity_t action)
 {
-		if (button_pressing_counter > (1000/TIMER1_TICK_MS) *5)
+		if (button_pressing_counter > (1000/TIMER1_TICK_MS) *5) {
 			long_push_led();
-		else if (button_pressing_counter >= 50/TIMER1_TICK_MS)
+			button_status = LONG_BUTTON_PUSH;
+			button_releasing_counter = 0;
+		} else if (button_pressing_counter >= 50/TIMER1_TICK_MS) {
 			short_push_led();
+			button_status = SHORT_BUTTON_PUSH;
+			button_releasing_counter = 0;
+		}
 }
 
 

@@ -13,5 +13,6 @@ void confirmation_led(void);
 
 void UTC_set(uint32_t currentUTC);
 uint32_t UTC_get(void);
+uint8_t button_status_get(void);
 
 #endif /* BUTTON_LED_H */

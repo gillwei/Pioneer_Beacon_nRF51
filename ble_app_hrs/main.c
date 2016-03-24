@@ -57,12 +57,24 @@
 #include "spi_flash_MXIC.h"
 #include "nrf_drv_gpiote.h"
 
+//Same definition as ble_pbs.c
+#define TSC_ALLDATA_LENGTH														17
+#define BSC_ALLDATA_LENGTH														13
+#define ESC_ALLDATA_LENGTH														 3
+#define DRHC_ALLDATA_LENGTH														14
+#define CDRC_ALLDATA_MIN_LENGTH												 3 // NOT USED
+#define CDRC_ALLDATA_MAX_LENGTH												20
+#define RDRC_ALLDATA_MIN_LENGTH												 3 // NOT USED
+#define RDRC_ALLDATA_MAX_LENGTH												20
+#define BDC_ALLDATA_LENGTH                             4
+#define BDRC_ALLDATA_LENGTH                            4
+
 #define IS_SRVC_CHANGED_CHARACT_PRESENT  1                                          /**< Include or not the service_changed characteristic. if not enabled, the server's database cannot be changed for the lifetime of the device*/
 
 #define CENTRAL_LINK_COUNT               0                                          /**<number of central links used by the application. When changing this number remember to adjust the RAM settings*/
 #define PERIPHERAL_LINK_COUNT            1                                          /**<number of peripheral links used by the application. When changing this number remember to adjust the RAM settings*/
 
-#define DEVICE_NAME                      "BLE_PBS_V0_1"                               /**< Name of device. Will be included in the advertising data. */
+#define DEVICE_NAME                      "BLE_PBS_V0_2"                               /**< Name of device. Will be included in the advertising data. */
 #define MANUFACTURER_NAME                "NordicSemiconductor"                      /**< Manufacturer. Will be passed to Device Information Service. */
 #define APP_ADV_INTERVAL                 300                                        /**< The advertising interval (in units of 0.625 ms. This value corresponds to 25 ms). */
 #define APP_ADV_TIMEOUT_IN_SECONDS       180000                                        /**< The advertising timeout in units of seconds. */
@@ -72,7 +84,7 @@
 
 #define DATA_HEADER_REPORT_INTERVAL      APP_TIMER_TICKS(TIMER_DURATION, APP_TIMER_PRESCALER) 
 
-#define CAL_INTERVAL_DURATION						 50 
+#define CAL_INTERVAL_DURATION						 100  																			// Calculation data send interval
 #define CAL_DATA_INTERVAL      					 APP_TIMER_TICKS(CAL_INTERVAL_DURATION, APP_TIMER_PRESCALER) /**< Battery level measurement interval (ticks). */
 #define MIN_BATTERY_LEVEL                81                                         /**< Minimum simulated battery level. */
 #define MAX_BATTERY_LEVEL                100                                        /**< Maximum simulated 7battery level. */
@@ -81,12 +93,14 @@
 #define ADV_STOP_DURATION								 60000  // Stop advertising Period, should be multiple of ADVERTISING_TIMER_DURATION
 #define ADV_DURATION										 18000000 // Advertising timeout, should be multiple of ADVERTISING_TIMER_DURATION
 #define ADVERTISING_TIMER_DURATION			 1000
-#define ADVERTISING_TIMER_INTERVAL       APP_TIMER_TICKS(ADVERTISING_TIMER_DURATION, APP_TIMER_PRESCALER) /**< Heart rate measurement interval (ticks). */
+#define ADVERTISING_TIMER_INTERVAL       APP_TIMER_TICKS(ADVERTISING_TIMER_DURATION, APP_TIMER_PRESCALER) /**< Advertising timer  (ticks). */
 //#define MIN_HEART_RATE                   140                                        /**< Minimum heart rate as returned by the simulated measurement function. */
 //#define MAX_HEART_RATE                   300                                        /**< Maximum heart rate as returned by the simulated measurement function. */
 //#define HEART_RATE_INCREMENT             10                                         /**< Value by which the heart rate is incremented/decremented for each call to the simulated measurement function. */
 
-//#define RR_INTERVAL_INTERVAL             APP_TIMER_TICKS(300, APP_TIMER_PRESCALER)  /**< RR interval interval (ticks). */
+#define SHORT_PUSH_ON_LOCK_INTERVAL      10000
+#define BUTTON_LED_TIMER_DURATION			 	 2000  // Not minisecond, need confirm
+#define BUTTON_LED_INTERVAL              APP_TIMER_TICKS(BUTTON_LED_TIMER_DURATION, APP_TIMER_PRESCALER)  /**< RR interval interval (ticks). */
 //#define MIN_RR_INTERVAL                  100                                        /**< Minimum RR interval as returned by the simulated measurement function. */
 //#define MAX_RR_INTERVAL                  500                                        /**< Maximum RR interval as returned by the simulated measurement function. */
 //#define RR_INTERVAL_INCREMENT            1                                          /**< Value by which the RR interval is incremented/decremented for each call to the simulated measurement function. */
@@ -127,7 +141,7 @@ STATIC_ASSERT(IS_SRVC_CHANGED_CHARACT_PRESENT);                                 
 
 static uint16_t                          m_conn_handle = BLE_CONN_HANDLE_INVALID;   /**< Handle of the current connection. */
 
-static ble_pbs_t                         m_pbs;                                     /**< Structure used to identify the PBS. */
+ble_pbs_t                         m_pbs;                                     /**< Structure used to identify the PBS. */
 //static ble_bas_t                         m_bas;                                     /**< Structure used to identify the battery service. */
 //static ble_hrs_t                         m_hrs;                                     /**< Structure used to identify the heart rate service. */
 //static bool                              m_rr_interval_enabled = true;              /**< Flag for enabling and disabling the registration of new RR interval measurements (the purpose of disabling this is just to test sending HRM without RR interval data. */
@@ -141,7 +155,7 @@ static ble_pbs_t                         m_pbs;                                 
 
 APP_TIMER_DEF(m_cal_data_id);                                                  /**< Battery timer. */
 APP_TIMER_DEF(m_adv_timer_id);                                               /**< Heart rate measurement timer. */
-//APP_TIMER_DEF(m_rr_interval_timer_id);                                              /**< RR interval timer. */                 /**< RR interval timer. */
+APP_TIMER_DEF(m_button_led_timer_id);                                              /**< RR interval timer. */                 /**< RR interval timer. */
 //APP_TIMER_DEF(m_sensor_contact_timer_id);                                           /**< Sensor contact detected timer. */
 
 extern bool esc_notify_flag;
@@ -152,6 +166,8 @@ extern bool rdrc_notify_flag;
 static dm_application_instance_t         m_app_handle;                              /**< Application identifier allocated by device manager */
 static bool data_process_trigger = false;
 static bool advertising_trigger = false;
+static bool button_led_trigger = false;
+static int red_led_lock = 0;
 //static ble_uuid_t m_adv_uuids[] = {{BLE_UUID_HEART_RATE_SERVICE,         BLE_UUID_TYPE_BLE}};
                                    //{BLE_UUID_BATTERY_SERVICE,            BLE_UUID_TYPE_BLE}};
                                    //{BLE_UUID_DEVICE_INFORMATION_SERVICE, BLE_UUID_TYPE_BLE}}; /**< Universally unique service identifiers. */
@@ -172,7 +188,12 @@ static uint16_t adv_counter = 0;
 static bool 		adv_on = false;
 static uint16_t totalPktNum;
 static uint8_t p_cal_encoded_buffer_prepare[20] = {0};
-																	 
+// Button LED status
+extern int g_led_on_countdown;  // Long push triggered
+extern uint16_t r_led_pattern_push_cnt; // Short push triggered
+static bool short_push_state = false;
+static bool                             m_pbs_esc_ind_conf_pending = false;  
+
 /**@brief Callback function for asserts in the SoftDevice.
  *
  * @details This function will be called in case of an assert in the SoftDevice.
@@ -190,33 +211,12 @@ void assert_nrf_callback(uint16_t line_num, const uint8_t * p_file_name)
 }
 
 
-/**@brief Function for performing battery measurement and updating the Battery Level characteristic
- *        in Battery Service.
- */
-//static void battery_level_update(void)
-//{
-//    uint32_t err_code;
-//    uint8_t  battery_level;
-
-//    battery_level = (uint8_t)sensorsim_measure(&m_battery_sim_state, &m_battery_sim_cfg);
-
-//    err_code = ble_bas_battery_level_update(&m_bas, battery_level);
-//    if ((err_code != NRF_SUCCESS) &&
-//        (err_code != NRF_ERROR_INVALID_STATE) &&
-//        (err_code != BLE_ERROR_NO_TX_PACKETS) &&
-//        (err_code != BLE_ERROR_GATTS_SYS_ATTR_MISSING)
-//        )
-//    {
-//        APP_ERROR_HANDLER(err_code);
-//    }
-//}
-
 void flash_write_simulation(void)
 {
 	float cal_acc_test[3];	
-		cal_acc_test[0] = 0.5;
-		cal_acc_test[1] = 0.1;
-		cal_acc_test[2] = 0.2;			
+		cal_acc_test[0] = 50+1600;
+		cal_acc_test[1] = 30+1600;
+		cal_acc_test[2] = 100+1600;			
 		int w_cnt = 600 * 3;
 	//	flash_data_set_init();	
 		while(w_cnt--) {
@@ -256,10 +256,10 @@ static void data_process(void)
 		data_process_trigger = false;
 		uint32_t err_code;
 	
-	if (pktCounter == 0)
-	{
+//	if (pktCounter == 0)
+//	{
 //		flash_write_simulation();
-	}
+//	}
 	// Simulator flash read
 		uint16_t data_x[4] = {0};
 		uint16_t data_y[4] = {0};
@@ -277,108 +277,102 @@ static void data_process(void)
 		uint32_t cal_r_z;
 		uint8_t r_sensor_interval;	
 		int ret=-1;
-		ret = flash_data_set_read(&r_xy, &r_z, &cal_r_xy, &cal_r_z, &r_event_ID, &r_UTC, &r_sensor_interval);
-		//nrf_delay_ms(100);
-		// UART Print
-		if (ret >= 0) {
-				
-				printf("%i,%u,", r_event_ID, r_UTC);
-			//print logged raw xyz data
-			printf("%i,%f,%f,%f\n\r", ret+1,(float)((cal_r_xy&0xFFFF0000)>>16)/100-16,(float)(cal_r_xy&0x0000FFFF)/100-16, (float)cal_r_z/100-16);
-		} else{
-			//printf("no event;");
-		}
-		uint8_t pktNum=0; //for 4 packet in one notify
 		
-		if (ret > 0 && m_conn_handle != BLE_CONN_HANDLE_INVALID && cdrc_notify_flag== true)  // for test
+		uint8_t inPktNum=0; //for 4 packet in one notify
+		//printf("cdrc_notify_flag:%i,conn:%04X\r\n",cdrc_notify_flag,m_conn_handle);
+		//if (ret > 0 && m_conn_handle != BLE_CONN_HANDLE_INVALID && cdrc_notify_flag== true)  // for test
+		if(m_conn_handle != BLE_CONN_HANDLE_INVALID && drhc_notify_flag && cdrc_notify_flag)
 		{
-			// need change
-			//totalPktNum = (m_pbs.bsc_s.sampling_frequency)*(m_pbs.drhc_s.recorded_event_duration);
-//			if (ret == 499) 
-//			{
-//				pktCounter = 125; 
-//			}
-			// Send Data Header
-			pktCounter = (ret+1)/4;
-			printf("pktCounter : %i ",pktCounter);
-			pktCounterCopy = pktCounter;
-			if ((pktCounter > pktCounterCopy) || pktCounter == 125)
+			ret = flash_data_set_read(&r_xy, &r_z, &cal_r_xy, &cal_r_z, &r_event_ID, &r_UTC, &r_sensor_interval);
+			//nrf_delay_ms(100);
+			// UART Print
+			if (ret < 0)
 			{
-				uint32_t tempUTC = UTC_get();
-				uint8_t p_tempUTC[4]; 
-				uint32_big_encode(tempUTC,p_tempUTC);
-				uint8_t sim_drhc_data[14] = {20,12,3,r_event_ID,10,p_tempUTC[0],p_tempUTC[1],p_tempUTC[2],p_tempUTC[3],0,0,0,0,0};
-				//uint8_t sim_drhc_data[9] = {20,12,3,1,10,0,0,0,0};
-				err_code = ble_pbs_drhc_update(&m_pbs, sim_drhc_data);
-				printf("drhc_update:%04X\r\n",err_code);
+				printf("no event;");
 			}
-			
-			p_cal_encoded_buffer[0] = pktCounter;
-			p_cal_encoded_buffer[1] = 18;
-			
-			pktCounter--;
-			// Flash data assign to uint16_t array
-			for (int i=0;i<4;i++)
+			else
 			{
-				data_x[i] = (uint16_t)((cal_r_xy&0xFFFF0000)>>16);
-				data_y[i] = (uint16_t)(cal_r_xy&0xFFFF);
-				data_z[i] = (uint16_t)(cal_r_z&0xFFFF);
-				if (i!= 0)
-					ret = flash_data_set_read(&r_xy, &r_z, &cal_r_xy, &cal_r_z, &r_event_ID, &r_UTC, &r_sensor_interval);
-			}
-				// Check data 
-			for(int i=0;i<4;i++)
-			{
-				printf("%04X %04X %04X ",data_x[i],data_y[i],data_z[i]);
-			}
-			printf("\r\n");
-			pktNum=0;
-			// assign 4 read data value to cdrc data packet
-			for (int i=2;i<20;i=i+9)
-			{
-				p_cal_encoded_buffer[i] = (uint8_t) (data_z[pktNum]& 0xFF) ;
-				p_cal_encoded_buffer[i+1] = ((data_z[pktNum]& 0x0F00) >> 8) | ((data_y[pktNum]&0x0F) << 4);
-				p_cal_encoded_buffer[i+2] = (uint8_t) ((data_y[pktNum]& 0x0FF0) >> 4) ;
-				p_cal_encoded_buffer[i+3] = (uint8_t) (data_x[pktNum]& 0xFF)  ;
-				p_cal_encoded_buffer[i+4] = ((data_x[pktNum]& 0x0F00) >> 8) | ((data_z[pktNum+1]&0x0F) << 4);
-				p_cal_encoded_buffer[i+5] = (uint8_t) ((data_z[pktNum+1]& 0x0FF0) >> 4) ;
-				p_cal_encoded_buffer[i+6] = (uint8_t) (data_y[pktNum+1]& 0xFF) ;
-				p_cal_encoded_buffer[i+7] = ((data_y[pktNum+1]& 0x0F00) >> 8) | ((data_x[pktNum+1]&0x0F) << 4);
-				p_cal_encoded_buffer[i+8] = (uint8_t) ((data_x[pktNum+1]& 0x0FF0) >> 4) ;
-				pktNum += 2;
-			}
-			printf("ret: %i,Cal data:",ret);
-			for(int i=19;i>=0;i--)
-			{
-				printf("%02X",p_cal_encoded_buffer[i]);
-			}
-			printf("\r\n");
-			// Check Flash data read error
-			if (p_cal_encoded_buffer[19]==0xFF &&p_cal_encoded_buffer[18]==0xFF&&p_cal_encoded_buffer[17]==0xFF && p_cal_encoded_buffer[16]==0xFF)
-			{
-					for(int i=19;i>=2;i--)
+					printf("%i,%u,", r_event_ID, r_UTC);
+					printf("%i,%f,%f,%f\n\r", ret+1,((float)((cal_r_xy&0xFFFF0000)>>16))/100-16,((float)(cal_r_xy&0x0000FFFF))/100-16, (float)cal_r_z/100-16);
+					//totalPktNum = (m_pbs.bsc_s.sampling_frequency)*(m_pbs.drhc_s.recorded_event_duration); // need change
+
+					pktCounter = (ret+1)/4;
+					//printf("pktCounter : %i \r\n",pktCounter);
+					// Send Data Header, use pktCounterCopy check if pktCounter recount 
+					// in case that pktCounter miss the first one packet
+					// Send Data Header
+					if (((pktCounter > pktCounterCopy) || pktCounter == 125) ) 
 					{
-						p_cal_encoded_buffer[i] = p_cal_encoded_buffer_prepare[i];
+						uint32_t tempUTC = UTC_get();
+						uint8_t p_tempUTC[4]; 
+						uint32_big_encode(tempUTC,p_tempUTC);
+						uint8_t sim_drhc_data[14] = {20,12,3,r_event_ID,10,p_tempUTC[0],p_tempUTC[1],p_tempUTC[2],p_tempUTC[3],0,0,0,0,0};
+						err_code = ble_pbs_drhc_update(&m_pbs, sim_drhc_data);
+						printf("drhc_update:%04X\r\n",err_code);
 					}
-			}
-			err_code = ble_pbs_cdrc_update(&m_pbs, p_cal_encoded_buffer);
-			printf("cdrc_update_err:%04X\r\n",err_code);
-			
-			//Prepare for flash read error
-			for(int i=19;i>=2;i--)
-			{
-				p_cal_encoded_buffer_prepare[i] = p_cal_encoded_buffer[i];
-			}
+					pktCounterCopy = pktCounter;
+					p_cal_encoded_buffer[0] = pktCounter;
+					p_cal_encoded_buffer[1] = 18;
+					
+					pktCounter--;
+					// Flash data assign to uint16_t array
+					for (int i=0;i<4;i++)
+					{
+						data_x[i] = (uint16_t)((cal_r_xy&0xFFFF0000)>>16);
+						data_y[i] = (uint16_t)(cal_r_xy&0xFFFF);
+						data_z[i] = (uint16_t)(cal_r_z&0xFFFF);
+						if (i!= 0)
+							ret = flash_data_set_read(&r_xy, &r_z, &cal_r_xy, &cal_r_z, &r_event_ID, &r_UTC, &r_sensor_interval);
+					}
+						// Check data 
+		//			for(int i=0;i<4;i++)
+		//			{
+				//		printf("%i %04X %04X %04X\r\n",i,data_x[i],data_y[i],data_z[i]);
+					//}
+				//	printf("\r\n");
+
+					// assign 4 read data value to cdrc data packet
+					for (int i=2;i<20;i=i+9)
+					{
+						p_cal_encoded_buffer[i] = (uint8_t) ((data_z[inPktNum]& 0x0FF0)	>> 4) ;
+						p_cal_encoded_buffer[i+1] = ((uint8_t)((data_z[inPktNum]& 0x000F) << 4) & 0xF0) | (((data_y[inPktNum]&0x0F00) >> 8)& 0x0F);
+						p_cal_encoded_buffer[i+2] = (uint8_t) (data_y[inPktNum]& 0xFF);
+						p_cal_encoded_buffer[i+3] = (uint8_t) ((data_x[inPktNum]& 0x0FF0)	>> 4) ;
+						p_cal_encoded_buffer[i+4] = ((uint8_t)((data_x[inPktNum]& 0x000F) << 4) & 0xF0) | (((data_z[inPktNum+1]&0x0F00) >> 8)& 0x0F);
+						p_cal_encoded_buffer[i+5] = (uint8_t) (data_z[inPktNum+1]& 0xFF);
+						p_cal_encoded_buffer[i+6] = (uint8_t) ((data_y[inPktNum+1]& 0x0FF0)	>> 4) ;
+						p_cal_encoded_buffer[i+7] = ((uint8_t)((data_y[inPktNum+1]& 0x000F) << 4) & 0xF0) | (((data_x[inPktNum+1]&0x0F00) >> 8)& 0x0F);
+						p_cal_encoded_buffer[i+8] = (uint8_t) (data_x[inPktNum+1]& 0xFF);
+						inPktNum += 2;
+					}
+		//			printf("ret: %i,Cal data:",ret);
+		//			for(int i=0;i<20;i++)
+		//			{
+		//				printf("%02X",p_cal_encoded_buffer[i]);
+		//			}
+		//			printf("\r\n");
+		//			// Check Flash data read error
+		//			if (p_cal_encoded_buffer[19]==0xFF &&p_cal_encoded_buffer[18]==0xFF&&p_cal_encoded_buffer[17]==0xFF && p_cal_encoded_buffer[16]==0xFF)
+		//			{
+		//					for(int i=19;i>=2;i--)
+		//					{
+		//						p_cal_encoded_buffer[i] = p_cal_encoded_buffer_prepare[i];
+		//					}
+		//			}
+					err_code = ble_pbs_cdrc_update(&m_pbs, p_cal_encoded_buffer);
+					printf("cdrc_update_err:%04X\r\n",err_code);
+					
+					//Prepare for flash read error
+		//			for(int i=19;i>=2;i--)
+		//			{
+		//				p_cal_encoded_buffer_prepare[i] = p_cal_encoded_buffer[i];
+		//			}
+		}
 		}
 #endif
 	} // if(ble_routine_trigger)
 }
 
-//static void battery_level_meas_timeout_handler(void * p_context)
-//{
-//    UNUSED_PARAMETER(p_context);
-//    battery_level_update();
-//}
 
 
 /**@brief Function for handling the Heart rate measurement timer timeout.
@@ -418,35 +412,57 @@ static void adv_timeout_handler(void * p_context)
 	// For advertising
 	//advertising_trigger = true;
 }
+static int test = 0;
+extern void bdrc_data_encode(uint8_t*,const bdrc_t * );
 
+static void button_led_process(void)
+{
+	if (button_led_trigger)
+	{
+		// Check Button Push Status
+		button_led_trigger = false;
+		uint8_t button_status = button_status_get();
+		//printf("button_status:%02X\r\n",button_status);
+		uint8_t encoded_bdrc_data [BDRC_ALLDATA_LENGTH] = {0};
+		if (button_status != 0)
+		{
+			m_pbs.bdrc_s.button_status = button_status;
+			bdrc_data_encode(encoded_bdrc_data, &m_pbs.bdrc_s);
+			ble_pbs_bdrc_update(&m_pbs,encoded_bdrc_data);
+			//nrf_delay_ms(100);
+			m_pbs.bdrc_s.button_status = 0;
+			bdrc_data_encode(encoded_bdrc_data, &m_pbs.bdrc_s);
+			ble_pbs_bdrc_update(&m_pbs,encoded_bdrc_data);
+		}
+//		if (r_led_pattern_push_cnt >0 )
+//		{
+//			if (red_led_lock == 0)
+//			{
+//			//Into Short Push State, red_led_lock start to count until 0
+//			red_led_lock = SHORT_PUSH_ON_LOCK_INTERVAL/BUTTON_LED_TIMER_DURATION;
+//			m_pbs.bdrc_s.button_status = 0x01;
+//			printf("adv_time:%02X,adv_interval:%04X\r\n",m_pbs.bdrc_s.advertising_time,m_pbs.bdrc_s.bdrc_advertising_interval);
+//			bdrc_data_encode(encoded_bdrc_data, &m_pbs.bdrc_s);
+//			ble_pbs_bdrc_update(&m_pbs,encoded_bdrc_data);
+//			}
+//		}
+//		else if (r_led_pattern_push_cnt >0 & red_led_lock == 0)
+//		{
+//			m_pbs.bdrc_s.button_status = 0;
+//			bdrc_data_encode(encoded_bdrc_data, &m_pbs.bdrc_s);			
+//			ble_pbs_bdrc_update(&m_pbs,encoded_bdrc_data);	
+//		}
+//		else if (red_led_lock < 0)
+//			red_led_lock = 0;
+//		//printf("r_led_pattern_push_cnt:%i,red_led_lock:%i\r\n,",r_led_pattern_push_cnt,red_led_lock);
+	}
+}
 
-
-//static void heart_rate_meas_timeout_handler(void * p_context)
-//{
-//    static uint32_t cnt = 0;
-//    uint32_t        err_code;
-//    uint16_t        heart_rate;
-
-//    UNUSED_PARAMETER(p_context);
-
-//    heart_rate = (uint16_t)sensorsim_measure(&m_heart_rate_sim_state, &m_heart_rate_sim_cfg);
-
-//    cnt++;
-//    err_code = ble_hrs_heart_rate_measurement_send(&m_hrs, heart_rate);
-//    if ((err_code != NRF_SUCCESS) &&
-//        (err_code != NRF_ERROR_INVALID_STATE) &&
-//        (err_code != BLE_ERROR_NO_TX_PACKETS) &&
-//        (err_code != BLE_ERROR_GATTS_SYS_ATTR_MISSING)
-//        )
-//    {
-//        APP_ERROR_HANDLER(err_code);
-//    }
-
-//    // Disable RR Interval recording every third heart rate measurement.
-//    // NOTE: An application will normally not do this. It is done here just for testing generation
-//    //       of messages without RR Interval measurements.
-//    m_rr_interval_enabled = ((cnt % 3) != 0);
-//}
+static void button_led_timeout_handler(void * p_context)
+{
+	UNUSED_PARAMETER(p_context);
+	button_led_trigger = true;
+}
 
 
 /**@brief Function for handling the RR interval timer timeout.
@@ -512,10 +528,10 @@ static void timers_init(void)
                                 adv_timeout_handler);
     APP_ERROR_CHECK(err_code);
 
-//    err_code = app_timer_create(&m_rr_interval_timer_id,
-//                                APP_TIMER_MODE_REPEATED,
-//                                rr_interval_timeout_handler);
-//    APP_ERROR_CHECK(err_code);
+    err_code = app_timer_create(&m_button_led_timer_id,
+                                APP_TIMER_MODE_REPEATED,
+                                button_led_timeout_handler);
+    APP_ERROR_CHECK(err_code);
 
 //    err_code = app_timer_create(&m_sensor_contact_timer_id,
 //                                APP_TIMER_MODE_REPEATED,
@@ -656,6 +672,24 @@ static void reset_prepare(void)
 #endif // BLE_DFU_APP_SUPPORT
 
 
+static void on_pbs_evt(ble_pbs_t * p_hts, ble_pbs_evt_t * p_evt)
+{
+    switch (p_evt->evt_type)
+    {
+        case BLE_PBS_EVT_INDICATION_ENABLED:
+            // Indication has been enabled, send a single temperature measurement
+            //temperature_measurement_send();
+            break;
+
+        case BLE_PBS_EVT_INDICATION_CONFIRMED:
+            //m_hts_meas_ind_conf_pending = false;
+            break;
+
+        default:
+            // No implementation needed.
+            break;
+    }
+}
 /**@brief Function for initializing services that will be used by the application.
  *
  * @details Initialize the Heart Rate, Battery and Device Information services.
@@ -663,7 +697,7 @@ static void reset_prepare(void)
 static void services_init(void)
 {
     uint32_t       err_code;
-	m_pbs.evt_handler          = NULL;
+	m_pbs.evt_handler          = on_pbs_evt;
 		memset(&m_pbs, 0, sizeof(m_pbs));
     BLE_GAP_CONN_SEC_MODE_SET_OPEN(&m_pbs.pbs_attr_md.read_perm);
 		BLE_GAP_CONN_SEC_MODE_SET_OPEN(&m_pbs.pbs_attr_md.write_perm); // Orignally no access
@@ -720,59 +754,6 @@ static void services_init(void)
     err_code = ble_pbs_init(&m_pbs);
     APP_ERROR_CHECK(err_code);
 	
-    //ble_hrs_init_t hrs_init;
-//    ble_bas_init_t bas_init;
-//    ble_dis_init_t dis_init;
-    uint8_t        body_sensor_location;
-
-    // Initialize Heart Rate Service.
-//    body_sensor_location = BLE_HRS_BODY_SENSOR_LOCATION_FINGER;
-
-//    memset(&hrs_init, 0, sizeof(hrs_init));
-
-//    hrs_init.evt_handler                 = NULL;
-//    hrs_init.is_sensor_contact_supported = true;
-//    hrs_init.p_body_sensor_location      = &body_sensor_location;
-
-//    // Here the sec level for the Heart Rate Service can be changed/increased.
-//    BLE_GAP_CONN_SEC_MODE_SET_OPEN(&hrs_init.hrs_hrm_attr_md.cccd_write_perm);
-//    BLE_GAP_CONN_SEC_MODE_SET_NO_ACCESS(&hrs_init.hrs_hrm_attr_md.read_perm);
-//    BLE_GAP_CONN_SEC_MODE_SET_NO_ACCESS(&hrs_init.hrs_hrm_attr_md.write_perm);
-
-//    BLE_GAP_CONN_SEC_MODE_SET_OPEN(&hrs_init.hrs_bsl_attr_md.read_perm);
-//    BLE_GAP_CONN_SEC_MODE_SET_NO_ACCESS(&hrs_init.hrs_bsl_attr_md.write_perm);
-
-//    err_code = ble_hrs_init(&m_hrs, &hrs_init);
-//    APP_ERROR_CHECK(err_code);
-
-//    // Initialize Battery Service.
-//    memset(&bas_init, 0, sizeof(bas_init));
-
-//    // Here the sec level for the Battery Service can be changed/increased.
-//    BLE_GAP_CONN_SEC_MODE_SET_OPEN(&bas_init.battery_level_char_attr_md.cccd_write_perm);
-//    BLE_GAP_CONN_SEC_MODE_SET_OPEN(&bas_init.battery_level_char_attr_md.read_perm);
-//    BLE_GAP_CONN_SEC_MODE_SET_NO_ACCESS(&bas_init.battery_level_char_attr_md.write_perm);
-
-//    BLE_GAP_CONN_SEC_MODE_SET_OPEN(&bas_init.battery_level_report_read_perm);
-
-//    bas_init.evt_handler          = NULL;
-//    bas_init.support_notification = true;
-//    bas_init.p_report_ref         = NULL;
-//    bas_init.initial_batt_level   = 100;
-
-//    err_code = ble_bas_init(&m_bas, &bas_init);
-//    APP_ERROR_CHECK(err_code);
-
-    // Initialize Device Information Service.
-//    memset(&dis_init, 0, sizeof(dis_init));
-
-//    ble_srv_ascii_to_utf8(&dis_init.manufact_name_str, (char *)MANUFACTURER_NAME);
-
-//    BLE_GAP_CONN_SEC_MODE_SET_OPEN(&dis_init.dis_attr_md.read_perm);
-//    BLE_GAP_CONN_SEC_MODE_SET_NO_ACCESS(&dis_init.dis_attr_md.write_perm);
-
-//    err_code = ble_dis_init(&dis_init);
-//    APP_ERROR_CHECK(err_code);
 
 #ifdef BLE_DFU_APP_SUPPORT
     /** @snippet [DFU BLE Service initialization] */
@@ -796,33 +777,6 @@ static void services_init(void)
 }
 
 
-/**@brief Function for initializing the sensor simulators.
- */
-//static void sensor_simulator_init(void)
-//{
-//    m_battery_sim_cfg.min          = MIN_BATTERY_LEVEL;
-//    m_battery_sim_cfg.max          = MAX_BATTERY_LEVEL;
-//    m_battery_sim_cfg.incr         = BATTERY_LEVEL_INCREMENT;
-//    m_battery_sim_cfg.start_at_max = true;
-
-//    sensorsim_init(&m_battery_sim_state, &m_battery_sim_cfg);
-
-//    m_heart_rate_sim_cfg.min          = MIN_HEART_RATE;
-//    m_heart_rate_sim_cfg.max          = MAX_HEART_RATE;
-//    m_heart_rate_sim_cfg.incr         = HEART_RATE_INCREMENT;
-//    m_heart_rate_sim_cfg.start_at_max = false;
-
-//    sensorsim_init(&m_heart_rate_sim_state, &m_heart_rate_sim_cfg);
-
-//    m_rr_interval_sim_cfg.min          = MIN_RR_INTERVAL;
-//    m_rr_interval_sim_cfg.max          = MAX_RR_INTERVAL;
-//    m_rr_interval_sim_cfg.incr         = RR_INTERVAL_INCREMENT;
-//    m_rr_interval_sim_cfg.start_at_max = false;
-
-//    sensorsim_init(&m_rr_interval_sim_state, &m_rr_interval_sim_cfg);
-//}
-
-
 /**@brief Function for starting application timers.
  */
 static void application_timers_start(void)
@@ -837,8 +791,8 @@ static void application_timers_start(void)
     err_code = app_timer_start(m_adv_timer_id, ADVERTISING_TIMER_INTERVAL, NULL);
     APP_ERROR_CHECK(err_code);
 
-//    err_code = app_timer_start(m_rr_interval_timer_id, RR_INTERVAL_INTERVAL, NULL);
-//    APP_ERROR_CHECK(err_code);
+    err_code = app_timer_start(m_button_led_timer_id, BUTTON_LED_TIMER_DURATION, NULL);
+    APP_ERROR_CHECK(err_code);
 
 //    err_code = app_timer_start(m_sensor_contact_timer_id, SENSOR_CONTACT_DETECTED_INTERVAL, NULL);
 //    APP_ERROR_CHECK(err_code);
@@ -1254,6 +1208,7 @@ int main(void)
 				event_detection_routine();
 				data_process();
 				advertising_duration_handle();
+				button_led_process();
         __WFI();			
 //        power_manage();
     }

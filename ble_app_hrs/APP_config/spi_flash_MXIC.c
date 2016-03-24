@@ -6,6 +6,7 @@
 
 #include "app_util_platform.h"
 #include "bsp.h"
+#include "boards.h"
 
 #include <string.h>
 

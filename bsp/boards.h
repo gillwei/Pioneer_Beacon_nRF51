@@ -40,6 +40,8 @@
   #include "n5_starterkit.h"
 #elif defined(BOARD_CUSTOM)
   #include "custom_board.h"
+#elif defined(DFBD_NNANN_PN0R_V11)
+	#include "dfbd_nnann_pn0r_v11.h"
 #else
 #error "Board is not defined"
 
