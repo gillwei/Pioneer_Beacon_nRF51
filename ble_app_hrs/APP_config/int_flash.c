@@ -9,7 +9,7 @@
 
 #include <stdio.h>
 
-//#define SD_ACTIVE	//NOT functional yet
+//#define SD_ACTIVE	//NOT functional yet!!
 
 #define STORAGE_SRAM
 

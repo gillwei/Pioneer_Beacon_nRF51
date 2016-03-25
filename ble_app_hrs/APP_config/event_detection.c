@@ -14,9 +14,9 @@
 
 #include "nrf_drv_timer.h"
 
-#define EVENT_UART_DEBUG
+//#define EVENT_UART_DEBUG
 
-#define DUMMY_TEST
+//#define DUMMY_TEST
 
 #define MAX_TEST_DATA_BYTES     (15U)                /**< max number of test bytes to be used for tx and rx. */
 #define UART_TX_BUF_SIZE 256                         /**< UART TX buffer size. */
@@ -64,6 +64,7 @@ float moving_avg_cal_x[moving_avg_size_ms/min_interval] = {0};
 float moving_avg_cal_y[moving_avg_size_ms/min_interval] = {0};
 uint8_t moving_avg_ptr = 0;
 extern float offset_xyz[3];
+extern int offset_roll_pitch_period_ms;
 
 const nrf_drv_timer_t TIMER_SENSOR = NRF_DRV_TIMER_INSTANCE(2);
 bool sensor_trigger = false;
@@ -170,7 +171,7 @@ uint8_t accident_dangerous_detection(float Accx_offset, float Accy_offset, float
 void event_detection_routine(void)
 {
 		if (sensor_trigger) {
-			uint8_t w_event_ID;
+			uint8_t w_event_ID = 0;
 			
 			sensor_trigger = false;
 			lis2dh12_acc_data(acc_test, cal_acc_test);
@@ -188,7 +189,8 @@ void event_detection_routine(void)
 			Accx_avg/=(moving_avg_size_ms/sensor_internal_ms);
 			Accy_avg/=(moving_avg_size_ms/sensor_internal_ms);
 
-			w_event_ID = accident_dangerous_detection(cal_acc_test[0]-offset_xyz[0], cal_acc_test[1]-offset_xyz[1], Accx_avg-offset_xyz[0], Accy_avg-offset_xyz[1]);
+			if (offset_roll_pitch_period_ms<=0)//only do the event detection after calibration (1 sec) is done
+				w_event_ID = accident_dangerous_detection(cal_acc_test[0]-offset_xyz[0], cal_acc_test[1]-offset_xyz[1], Accx_avg-offset_xyz[0], Accy_avg-offset_xyz[1]);
 #ifdef DUMMY_TEST
 			acc_test[0] = dummy_data;
 			acc_test[1] = dummy_data;
@@ -203,7 +205,7 @@ void event_detection_routine(void)
 				w_event_ID = 9;// dummy event
 			}
 #endif			
-			printf("event_num: %i ", flash_data_set_write(acc_test, cal_acc_test, w_event_ID));
+			flash_data_set_write(acc_test, cal_acc_test, w_event_ID);
 			
 			if(current_event_ID_get() == NO_EVENT)
 				sensor_internal_ms = temp_sensor_internal_ms;//only apply the setting if no event happening
