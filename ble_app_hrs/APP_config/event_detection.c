@@ -14,7 +14,9 @@
 
 #include "nrf_drv_timer.h"
 
-//#define EVENT_UART_DEBUG
+#define EVENT_UART_DEBUG
+
+#define DUMMY_TEST
 
 #define MAX_TEST_DATA_BYTES     (15U)                /**< max number of test bytes to be used for tx and rx. */
 #define UART_TX_BUF_SIZE 256                         /**< UART TX buffer size. */
@@ -25,7 +27,8 @@ uint8_t current_event_ID = 0;
 uint32_t tt, last_tt, cnt, Ecnt;
 bool t_lock = false;
 
-uint32_t sim_cnt = 50 * 12;
+float dummy_data = 0;
+uint32_t dummy_cnt = 0;
 
 enum{
 	NO_EVENT=0,  
@@ -186,14 +189,21 @@ void event_detection_routine(void)
 			Accy_avg/=(moving_avg_size_ms/sensor_internal_ms);
 
 			w_event_ID = accident_dangerous_detection(cal_acc_test[0]-offset_xyz[0], cal_acc_test[1]-offset_xyz[1], Accx_avg-offset_xyz[0], Accy_avg-offset_xyz[1]);
-			if(sim_cnt-- == 0) {
-				sim_cnt = 50 *12;
-				w_event_ID = 6;
-			} else {
-				w_event_ID = 0;
+#ifdef DUMMY_TEST
+			acc_test[0] = dummy_data;
+			acc_test[1] = dummy_data;
+			acc_test[2] = dummy_data;
+			cal_acc_test[0] = dummy_data;
+			cal_acc_test[1] = dummy_data;
+			cal_acc_test[2] = dummy_data;
+			dummy_data += 0.01;
+			if(dummy_data >= 16) dummy_data = -16;
+			if (dummy_cnt++ ==50*12) {
+				dummy_cnt = 50*8;
+				w_event_ID = 9;// dummy event
 			}
-			
-			flash_data_set_write(acc_test, cal_acc_test, w_event_ID);
+#endif			
+			printf("event_num: %i ", flash_data_set_write(acc_test, cal_acc_test, w_event_ID));
 			
 			if(current_event_ID_get() == NO_EVENT)
 				sensor_internal_ms = temp_sensor_internal_ms;//only apply the setting if no event happening
@@ -212,13 +222,14 @@ void event_detection_routine(void)
 				t_lock=true;
 				printf("eventID: %i triggeredUTC: %u numDataSet %i\n\r", r_event_ID, r_UTC, ret+1);
 			}
+			if(ret==0) t_lock=false;
 			//print logged raw xyz data
 			printf("%f,%f,%f,%f\n\r", (float)((float)(r_sensor_interval*Ecnt++)/1000)+r_UTC-7,(float)((cal_r_xy&0xFFFF0000)>>16)/100-16,(float)(cal_r_xy&0x0000FFFF)/100-16, (float)cal_r_z/100-16);
 		} else if (t_lock==false) {
 			/*print calibrated xyz raw data*/
 			//printf("%f,%f,%f,%f\n\r", (float)(sensor_internal_ms*cnt++)/1000, cal_acc_test[0], cal_acc_test[1], cal_acc_test[2]); //output for SerialChart program		
 			/*print Gx(ave)correct and Gy(ave)correct*/
-			printf("%f,%f,%f\n\r", (float)(sensor_internal_ms*cnt++)/1000, Accx_avg-offset_xyz[0], Accy_avg-offset_xyz[1]); //output for SerialChart program		
+			//printf("%f,%f,%f\n\r", (float)(sensor_internal_ms*cnt++)/1000, Accx_avg-offset_xyz[0], Accy_avg-offset_xyz[1]); //output for SerialChart program		
 			/*print Gx_correct and Gy_correct*/
 			//printf("%f,%f,%f\n\r", (float)(sensor_internal_ms*cnt++)/1000, cal_acc_test[0]-offset_xyz[0], cal_acc_test[1]-offset_xyz[1]); //output for SerialChart program
 		}
