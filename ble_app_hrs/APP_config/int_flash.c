@@ -9,7 +9,7 @@
 
 #include <stdio.h>
 
-//#define SD_ACTIVE
+//#define SD_ACTIVE	//NOT functional yet
 
 #define STORAGE_SRAM
 
@@ -216,25 +216,28 @@ uint8_t flash_data_set_write(float acc_g_xyz[3], float cal_acc_g_xyz[3], uint8_t
 				for(uint32_t i=0; i<four_page_size/2; i+=0x1000)
 					flash_page_erase((uint32_t*)(w_r_addr[w_buffer_event_ptr]+i));
 				uint32_t event_start_addr;
-//				if (SRAM_ptr+1>=SRAM_size_10s_xHz) {
-//					event_start_addr = SRAM_ptr+1-SRAM_size_10s_xHz;
-//					for (uint16_t i=0; i<SRAM_size_10s_xHz; i++)
-//						ordering_SRAM[i] = SRAM[event_start_addr+i];
-//				} else {
-//					event_start_addr = SRAM_ptr+1+SRAM_SIZE-SRAM_size_10s_xHz;
-//					for (uint16_t i=0; i<SRAM_size_10s_xHz; i++) {
-//						uint16_t ptr;
-//						ptr = event_start_addr+i;
-//						if (ptr >= SRAM_SIZE) ptr-=SRAM_SIZE;
-//						ordering_SRAM[i] = SRAM[ptr];
-//					}						
-//				}
+#if 1				
+				if (SRAM_ptr>=SRAM_size_10s_xHz) {
+					event_start_addr = SRAM_ptr-SRAM_size_10s_xHz;
+					for (uint16_t i=0; i<SRAM_size_10s_xHz; i++)
+						ordering_SRAM[i] = SRAM[event_start_addr+i];
+				} else {
+					event_start_addr = SRAM_ptr+SRAM_SIZE-SRAM_size_10s_xHz;
 					for (uint16_t i=0; i<SRAM_size_10s_xHz; i++) {
 						uint16_t ptr;
-						ptr = SRAM_ptr + i;
+						ptr = event_start_addr+i;
 						if (ptr >= SRAM_SIZE) ptr-=SRAM_SIZE;
 						ordering_SRAM[i] = SRAM[ptr];
-					}
+					}						
+				}
+#else				
+				for (uint16_t i=0; i<SRAM_size_10s_xHz; i++) {
+					uint16_t ptr;
+					ptr = SRAM_ptr + i;
+					if (ptr >= SRAM_SIZE) ptr-=SRAM_SIZE;
+					ordering_SRAM[i] = SRAM[ptr];
+				}
+#endif					
 				uint32_t w_ptr = w_r_addr[w_buffer_event_ptr];
 				for (uint16_t i=0; i<SRAM_size_10s_xHz; i++) {
 					flash_word_write((uint32_t*)w_ptr, ordering_SRAM[i]);
@@ -254,7 +257,7 @@ uint8_t flash_data_set_write(float acc_g_xyz[3], float cal_acc_g_xyz[3], uint8_t
 //			
 //			buffer_event_count++;
 		}
-//		printf("w_buffer_event_ptr (r): %x (%x)\n\r", w_buffer_event_ptr,r_buffer_event_ptr);
+		//printf("w_buffer_event_ptr (r): %x (%x)\n\r", w_buffer_event_ptr,r_buffer_event_ptr);
 		return buffer_event_count;
 }	
 #else
@@ -353,7 +356,7 @@ uint8_t flash_data_set_write(float acc_g_xyz[3], float cal_acc_g_xyz[3], uint8_t
 //			}
 //#endif				
 		}
-//		printf("w_buffer_event_ptr (r): %x (%x)\n\r", w_buffer_event_ptr,r_buffer_event_ptr);
+		//printf("w_buffer_event_ptr (r): %x (%x)\n\r", w_buffer_event_ptr,r_buffer_event_ptr);
 		return buffer_event_count;
 }	
 #endif
@@ -374,7 +377,7 @@ int flash_data_set_read(uint32_t *acc_g_xy, uint32_t *acc_g_z, uint32_t *cal_acc
 		*event_ID = event_type[r_buffer_event_ptr];
 		*UTC = event_utc[r_buffer_event_ptr];
 		*sensor_interval = event_sensor_internal[r_buffer_event_ptr];
-//		printf("r_addr_ptr: %x\n\r", r_addr_ptr);
+		//printf("r_addr_ptr: %x\n\r", r_addr_ptr);
 		if (acc_g_xy != NULL) {
 			*acc_g_xy = flash_word_read((uint32_t *)r_addr_ptr);
 		}
@@ -417,7 +420,7 @@ int flash_data_set_read(uint32_t *acc_g_xy, uint32_t *acc_g_z, uint32_t *cal_acc
 			if (r_addr_ptr < w_r_addr[r_buffer_event_ptr]) r_addr_ptr+= four_page_size;
 			if (r_addr_ptr < 0x60000) {
 				r_addr_ptr = r_addr_ptr;
-//				printf("err r_addr_ptr: %x\n\r", r_addr_ptr);
+				printf("err r_addr_ptr: %x\n\r", r_addr_ptr);
 			}
 		}
 		flag = 0;
