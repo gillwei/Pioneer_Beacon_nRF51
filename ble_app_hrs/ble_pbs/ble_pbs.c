@@ -35,7 +35,7 @@
 #include "app_util.h"
 #include "button_led.h"
 #include "nrf_delay.h"
-
+#include "event_detection.h"
 
 //15422fe0-bce5-11e5-a837-0800200c9a66
 #define PBS_UUID_BASE 										 {0x66,0x9A,0x0C,0x20,0x00,0x08,0x37,0xA8,0xE5,0x11,0xE5,0xBC,0xE0,0x2F,0x42,0x15}
@@ -76,7 +76,7 @@ bool drhc_notify_flag = false;
 bool cdrc_notify_flag = false;
 bool rdrc_notify_flag = false;
 bool bdrc_notify_flag = false;
-extern ble_pbs_t m_pbs;
+//extern ble_pbs_t m_pbs;
 	
 
 // Encode All Characteristics' Data
@@ -175,24 +175,61 @@ void bdrc_data_encode(uint8_t * p_encoded_buffer, const bdrc_t * p_bdrc)
 		p_encoded_buffer[len++] = p_bdrc->button_status;
 		
 }
+
+static void tsc_data_process(const uint8_t * p_encoded_buffer, tsc_t * p_tsc)
+{
+	uint8_t accident_level_update = (p_encoded_buffer[0] & 0x01);
+	uint8_t dangerous_level_update = (p_encoded_buffer[0] & 0x02);
+	if (accident_level_update == 0x01)
+	{
+		p_tsc->small_accident_level_x = uint16_big_decode(p_encoded_buffer+1);
+		p_tsc->small_accident_level_y = uint16_big_decode(p_encoded_buffer+3);
+		p_tsc->medium_accident_level = uint16_big_decode(p_encoded_buffer+5);
+		p_tsc->high_accident_level = uint16_big_decode(p_encoded_buffer+7);
+		printf("accident:%04X,%04X,%04X,%04X\r\n",p_tsc->small_accident_level_x,p_tsc->small_accident_level_y,p_tsc->medium_accident_level,p_tsc->high_accident_level );
+	}
+	if (dangerous_level_update == 0x02)
+	{
+		p_tsc->hard_accelaration_level = uint16_big_decode(p_encoded_buffer+9);
+		p_tsc->hard_braking_level = uint16_big_decode(p_encoded_buffer+11);
+		p_tsc->hard_steering_level_left = uint16_big_decode(p_encoded_buffer+13);
+		p_tsc->hard_steering_level_right = uint16_big_decode(p_encoded_buffer+15);
+		printf("dangerous:%04X,%04X,%04X,%04X\r\n",p_tsc->hard_accelaration_level,p_tsc->hard_braking_level,p_tsc->hard_steering_level_left,p_tsc->hard_steering_level_right );
+	}
+}
 static void bsc_data_process(const uint8_t * p_encoded_buffer, bsc_t * p_bsc)
 {
 	uint8_t led_confirmation = (p_encoded_buffer[0] & 0x01);
 	uint8_t update_sampling_freqency = (p_encoded_buffer[0] & 0x02);
+	uint16_t sampling_interval;
 	uint8_t update_ble_power = (p_encoded_buffer[0] & 0x04);
+	int16_t ble_power_int16;
+	int8_t ble_power_int8;
 	uint8_t update_current_utc = (p_encoded_buffer[0] & 0x08);
+	
 	printf("bsc_data:");
 	for (int i=0;i< 13;i++)
 		printf("%02X ",p_encoded_buffer[i]);
 	printf("\r\n");
+	
 	if (led_confirmation == 0x01)
 	{
 		confirmation_led();
 	}
-//	if (update_sampling_freqency == 0x04)
-//	{
-//		p_bsc->sampling_frequency = uint16_big_decode();
-//	}
+	if (update_sampling_freqency == 0x02)
+	{
+		p_bsc->sampling_frequency = uint16_big_decode(p_encoded_buffer+1);
+		sampling_interval = 1000/p_bsc->sampling_frequency ; // 100,50,33,25,10
+		printf("sampling_interval:%i\r\n",sampling_interval);
+		event_sampling_interval_set(sampling_interval);
+	}
+	if (update_ble_power == 0x04)
+	{
+		ble_power_int16 = uint16_big_decode(p_encoded_buffer+7);
+		ble_power_int8 = (int8_t)ble_power_int16;
+		uint32_t err_code = sd_ble_gap_tx_power_set(ble_power_int8);
+		printf("error:%04X,tx_power_set:%i\r\n",err_code,ble_power_int8);
+	}
 	if (update_current_utc == 0x08)
 	{
 		uint32_t tempUTC = uint32_big_decode(p_encoded_buffer+9);
@@ -201,26 +238,21 @@ static void bsc_data_process(const uint8_t * p_encoded_buffer, bsc_t * p_bsc)
 		printf("UTC:%08X\r\n",tempUTC);
 	}
 }
+static void bdc_data_decode(const uint8_t * p_encoded_buffer, bdc_t * p_bdc)
+{
+	p_bdc->advertising_period= p_encoded_buffer[0];
+	p_bdc->advertising_duration = p_encoded_buffer[1];
+	p_bdc->bdc_advertising_interval = uint16_big_decode(p_encoded_buffer+2);
+	printf("bdc:%02X,%02X,%04X\r\n",p_bdc->advertising_period,p_bdc->advertising_duration,p_bdc->bdc_advertising_interval);
+}
 
 static void bdrc_data_decode(const uint8_t * p_encoded_buffer, bdrc_t * p_bdrc)
 {
 	p_bdrc->advertising_time = p_encoded_buffer[0];
 	p_bdrc->bdrc_advertising_interval = uint16_big_decode(p_encoded_buffer+1);
+	printf("bdrc:%02X,%04X\r\n",p_bdrc->advertising_time,p_bdrc->bdrc_advertising_interval);
 }
-//static void tsc_data_decode(uint8_t * p_decoded_buffer, const tsc_t * p_tsc)
-//{
-//		uint8_t len = 0;
-//		p_tsc->flag = p_decoded_buffer[len++];
-//		uint16_decode(p_tsc->hard_accelaration_level);	
-//		len += uint16_encode(p_tsc->small_accident_level_x, &p_encoded_buffer[len]);
-//		len += uint16_encode(p_tsc->small_accident_level_y, &p_encoded_buffer[len]);
-//		len += uint16_encode(p_tsc->medium_accident_level, &p_encoded_buffer[len]);
-//		len += uint16_encode(p_tsc->high_accident_level, &p_encoded_buffer[len]);
-//		len += uint16_encode(p_tsc->hard_accelaration_level, &p_encoded_buffer[len]);
-//		len += uint16_encode(p_tsc->hard_braking_level, &p_encoded_buffer[len]);
-//		len += uint16_encode(p_tsc->hard_steering_level_left, &p_encoded_buffer[len]);
-//		len += uint16_encode(p_tsc->hard_steering_level_right, &p_encoded_buffer[len]);
-//}
+
 
 /**@brief Function for adding the Characteristic.
  *
@@ -523,6 +555,11 @@ static void on_write(ble_pbs_t * p_pbs, ble_evt_t * p_ble_evt)
 //uint32_t error_code;
 
 ble_gatts_evt_write_t * p_evt_write = &p_ble_evt->evt.gatts_evt.params.write;
+	if (tempHandle == p_pbs->tsc_handles.value_handle)
+		{
+			tsc_data_process(tempData, &p_pbs->tsc_s);
+			printf("tsc_data\r\n");
+		}
 	if (tempHandle == p_pbs->bsc_handles.value_handle) // write to bsc
 	{
 		bsc_data_process(tempData, &p_pbs->bsc_s);
@@ -556,7 +593,10 @@ ble_gatts_evt_write_t * p_evt_write = &p_ble_evt->evt.gatts_evt.params.write;
 		}	
 		if ((tempHandle == p_pbs->drhc_handles.cccd_handle) && (p_evt_write->len == 2))
     {
-					drhc_notify_flag = !drhc_notify_flag;
+			if (tempData[0] == 0)
+				drhc_notify_flag = false;
+			else
+				drhc_notify_flag = true;
 #if PBS_DEBUG
 					printf("drhc_notify_flag:%d\r\n",drhc_notify_flag);
 #endif	
@@ -565,7 +605,10 @@ ble_gatts_evt_write_t * p_evt_write = &p_ble_evt->evt.gatts_evt.params.write;
 		if ((tempHandle == p_pbs->cdrc_handles.cccd_handle) && (p_evt_write->len == 2))
     {
 			
-					cdrc_notify_flag = !cdrc_notify_flag;
+			if (tempData[0] == 0)
+				cdrc_notify_flag = false;
+			else
+				cdrc_notify_flag = true;
 #if PBS_DEBUG
 					printf("cdrc_notify_flag:%d\r\n",cdrc_notify_flag);
 #endif
@@ -573,7 +616,14 @@ ble_gatts_evt_write_t * p_evt_write = &p_ble_evt->evt.gatts_evt.params.write;
 		
 		if ((tempHandle == p_pbs->bdrc_handles.cccd_handle) && (p_evt_write->len == 2))
     {
-					bdrc_notify_flag = !bdrc_notify_flag;
+			if (tempData[0] == 0)
+				bdrc_notify_flag = false;
+			else
+				bdrc_notify_flag = true;
+		}
+		if (tempHandle == p_pbs->bdc_handles.value_handle)
+		{
+			bdc_data_decode(tempData, &p_pbs->bdc_s);
 		}
 		if (tempHandle == p_pbs->bdrc_handles.value_handle)
 		{
@@ -677,7 +727,7 @@ uint32_t ble_pbs_init(ble_pbs_t * p_pbs)
 														encoded_tsc_data,
 														TSC_ALLDATA_LENGTH,
 														&p_pbs->pbs_attr_md,
-														&p_pbs->bsc_handles);
+														&p_pbs->tsc_handles);
 #if PBS_DEBUG
 		//printf("tsc_add:%d\r\n",char_err_code);
 #endif	

@@ -14,6 +14,9 @@
 
 #include "nrf_drv_timer.h"
 
+//gill 20160328
+#include "ble_pbs.h"
+
 //#define EVENT_UART_DEBUG
 
 //#define DUMMY_TEST
@@ -139,12 +142,25 @@ void event_sampling_interval_set(uint8_t internal_ms)
     nrf_drv_timer_enable(&TIMER_SENSOR);
 }
 
+extern ble_pbs_t                         m_pbs; 
 uint8_t accident_dangerous_detection(float Accx_offset, float Accy_offset, float Accx_avg_offset, float Accy_avg_offset)
 {
 		float Acc_synthesis;
 		uint8_t w_event_ID;
 		Acc_synthesis = fabs(Accx_offset) + 1.5*fabs(Accx_offset);
+	// gill
+		acci_small_x = (float)m_pbs.tsc_s.small_accident_level_x/100;
+    acci_small_y = (float)m_pbs.tsc_s.small_accident_level_y/100;
+		acci_middle = (float)m_pbs.tsc_s.medium_accident_level/100;
+		acci_large = (float)m_pbs.tsc_s.high_accident_level/100;
+
+		dang_acceleration = -(float)m_pbs.tsc_s.hard_accelaration_level/100;
+		dang_braking = (float)m_pbs.tsc_s.hard_braking_level/100;
+		dang_right_strrting = (float)m_pbs.tsc_s.hard_steering_level_right/100;
+		dang_left_strrting = -(float)m_pbs.tsc_s.hard_steering_level_left/100; 
 	
+    //printf("small_accident_level_x: %f \r\n", (float)m_pbs.tsc_s.small_accident_level_x/100); 
+	//printf("dang_acceleration:%f\r\n",dang_acceleration,,,,);
 		if (Acc_synthesis > acci_large && current_event_ID_get() < ACCI_L) {
 			w_event_ID = ACCI_L;
 			large_accident_led();
