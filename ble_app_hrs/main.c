@@ -75,7 +75,6 @@
 #define PERIPHERAL_LINK_COUNT            1                                          /**<number of peripheral links used by the application. When changing this number remember to adjust the RAM settings*/
 
 #define DEVICE_NAME                      "BLE_PBS_V0_2"                               /**< Name of device. Will be included in the advertising data. */
-#define MANUFACTURER_NAME                "NordicSemiconductor"                      /**< Manufacturer. Will be passed to Device Information Service. */
 
 #define APP_ADV_TIMEOUT_IN_SECONDS       180000                                        /**< The advertising timeout in units of seconds. */
 
@@ -84,7 +83,7 @@
 
 #define DATA_HEADER_REPORT_INTERVAL      APP_TIMER_TICKS(TIMER_DURATION, APP_TIMER_PRESCALER) 
 
-#define CAL_INTERVAL_DURATION						 100  																			// Calculation data send interval
+#define CAL_INTERVAL_DURATION						 50  																			// Calculation data send interval
 #define CAL_DATA_INTERVAL      					 APP_TIMER_TICKS(CAL_INTERVAL_DURATION, APP_TIMER_PRESCALER) /**< Battery level measurement interval (ticks). */
 #define MIN_BATTERY_LEVEL                81                                         /**< Minimum simulated battery level. */
 #define MAX_BATTERY_LEVEL                100                                        /**< Maximum simulated 7battery level. */
@@ -103,7 +102,7 @@
 //#define MAX_HEART_RATE                   300                                        /**< Maximum heart rate as returned by the simulated measurement function. */
 //#define HEART_RATE_INCREMENT             10                                         /**< Value by which the heart rate is incremented/decremented for each call to the simulated measurement function. */
 
-#define SHORT_PUSH_ON_LOCK_INTERVAL      10000
+//#define SHORT_PUSH_ON_LOCK_INTERVAL      10000
 #define BUTTON_LED_TIMER_DURATION			 	 2000  // Not minisecond, need confirm
 #define BUTTON_LED_INTERVAL              APP_TIMER_TICKS(BUTTON_LED_TIMER_DURATION, APP_TIMER_PRESCALER)  /**< RR interval interval (ticks). */
 //#define MIN_RR_INTERVAL                  100                                        /**< Minimum RR interval as returned by the simulated measurement function. */
@@ -201,7 +200,7 @@ static bool 		adv_on = false;
 extern int g_led_on_countdown;  // Long push triggered
 extern uint16_t r_led_pattern_push_cnt; // Short push triggered
 extern float offset_xyz[3];
-//static bool short_push_state = false;
+static bool short_push_flag = false;
 //static bool                             m_pbs_esc_ind_conf_pending = false;  
 
 /**@brief Callback function for asserts in the SoftDevice.
@@ -432,6 +431,16 @@ static void advertising_handle(void)
 	{
 		advertising_trigger = false;
 		uint32_t err_code;
+		
+		// For Short Push Urgent status 
+//		if (short_push_counter == m_pbs.bdrc_s.advertising_time)
+//		{
+//			adv_counter = m_pbs.bdrc_s.advertising_time;
+//			printf("short_push_counter:%i\r\n",short_push_counter);
+//			short_push_counter = 0;
+//		}
+		
+		// Regular Advertising
 		if (adv_counter != 0 )
 			adv_counter--;
 		printf("adv_counter:%i\r\n",adv_counter);
@@ -470,11 +479,15 @@ static void button_led_process(void)
 	{
 		// Check Button Push Status
 		button_led_trigger = false;
-		uint8_t button_status = button_status_get();
+		uint32_t err_code;
+		uint8_t button_status = 0;
+		button_status = button_status_get();
 		//printf("button_status:%02X\r\n",button_status);
+		
 		uint8_t encoded_bdrc_data [BDRC_ALLDATA_LENGTH] = {0};
 		if (button_status != 0)
 		{
+			// Send Button status, then send 0
 			m_pbs.bdrc_s.button_status = button_status;
 			bdrc_data_encode(encoded_bdrc_data, &m_pbs.bdrc_s);
 			ble_pbs_bdrc_update(&m_pbs,encoded_bdrc_data);
@@ -482,6 +495,30 @@ static void button_led_process(void)
 			m_pbs.bdrc_s.button_status = 0;
 			bdrc_data_encode(encoded_bdrc_data, &m_pbs.bdrc_s);
 			ble_pbs_bdrc_update(&m_pbs,encoded_bdrc_data);
+		}
+		
+		// Short push state
+		if(button_status == 1)
+		{
+			short_push_flag = true;
+			// If BLE Connected, disconnect and advertising, else adv_stop and re-advertising
+			
+			if (m_conn_handle != BLE_CONN_HANDLE_INVALID) 
+			{
+				// Set advertising interval in disconnect event
+				err_code = sd_ble_gap_disconnect(m_conn_handle, BLE_HCI_REMOTE_USER_TERMINATED_CONNECTION);
+				printf("Urgent:disconnect:%04X\r\n",err_code);
+			}
+			else
+			{
+				// Set advertising interval and advertising again
+				sd_ble_gap_adv_stop();
+				uint16_t bdrc_adv_interval_u16 = m_pbs.bdrc_s.bdrc_advertising_interval/0.625;
+				printf("Urgent;bdrc_advertising_interval:%d\r\n",bdrc_adv_interval_u16);
+				advertising_init(bdrc_adv_interval_u16); 
+				err_code = ble_advertising_start(BLE_ADV_MODE_FAST);
+				printf("adv_start;adv_err:%04X\r\n",err_code);
+			}
 		}
 
 	}
@@ -922,8 +959,17 @@ static void on_adv_evt(ble_adv_evt_t ble_adv_evt)
 						printf("BLE_ADV_EVT_FAST\r\n");
 						err_code = bsp_indication_set(BSP_INDICATE_ADVERTISING);
 						APP_ERROR_CHECK(err_code);
-						adv_on = true;
-						adv_counter = m_pbs.bdc_s.advertising_duration*1000/ADVERTISING_TIMER_DURATION;
+						if (short_push_flag == true)
+						{
+							adv_on = true;
+							adv_counter = m_pbs.bdrc_s.advertising_time*1000/ADVERTISING_TIMER_DURATION;
+							short_push_flag = false;
+						}
+						else
+						{
+							adv_on = true;
+							adv_counter = m_pbs.bdc_s.advertising_duration*1000/ADVERTISING_TIMER_DURATION;
+						}
             break;
         case BLE_ADV_EVT_IDLE:
 						printf("BLE_ADV_EVT_IDLE\r\n");
@@ -962,8 +1008,12 @@ static void on_ble_evt(ble_evt_t * p_ble_evt)
 						bdrc_notify_flag = false;
 						adv_on = true;
 						adv_counter = 0;
-//						adv_counter = ADV_DURATION/ADVERTISING_TIMER_DURATION;
-						//err_code = ble_advertising_start(BLE_ADV_MODE_FAST);
+						if (short_push_flag == true)
+						{
+							uint16_t adv_interval_u16 = m_pbs.bdrc_s.bdrc_advertising_interval/0.625;
+							printf("bdrc_advertising_interval:%d\r\n",adv_interval_u16);
+							advertising_init(adv_interval_u16);
+						}
             break;
 
         default:

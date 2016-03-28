@@ -830,7 +830,7 @@ uint32_t ble_pbs_init(ble_pbs_t * p_pbs)
 #if PBS_DEBUG
 		//printf("rdrc_add:%d\r\n",char_err_code);
 #endif				
-		ble_uuid_t venCharID;
+		//ble_uuid_t venCharID;
 // Boarding Detection Report Characteristic
 		//ble_uuid128_t bdc_long_uuid = PBS_BOARDING_DETECTION_REPORT_UUID;  // It's invert added from the array sequence, uint8_t [16] array
 		//err_code = sd_ble_uuid_vs_add(&bdc_long_uuid, &venCharID.type); // add to Nordic VS UUID table
