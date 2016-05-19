@@ -10,6 +10,18 @@
  *
  */
 
+// Gill 20160519
+/*
+Timer 0 -> Softdevice // Not Enabled here
+Timer 1 -> button_led
+Timer 2 -> event_detection
+Timer 3 -> read_adc
+
+*/
+
+
+
+
 #ifndef NRF_DRV_CONFIG_H
 #define NRF_DRV_CONFIG_H
 
@@ -78,7 +90,7 @@
 #define TIMER2_INSTANCE_INDEX      (TIMER1_ENABLED+TIMER0_ENABLED)
 #endif
 
-#define TIMER3_ENABLED 0
+#define TIMER3_ENABLED 1
 
 #if (TIMER3_ENABLED == 1)
 #define TIMER3_CONFIG_FREQUENCY    NRF_TIMER_FREQ_16MHz
@@ -366,7 +378,7 @@
 #endif
 
 /* SAADC */
-#define SAADC_ENABLED 0
+#define SAADC_ENABLED 1  //20160504 open
 
 #if (SAADC_ENABLED == 1)
 #define SAADC_CONFIG_RESOLUTION      NRF_SAADC_RESOLUTION_10BIT

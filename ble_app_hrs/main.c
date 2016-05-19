@@ -24,6 +24,7 @@
 #include "nrf_drv_timer.h"
 #include "button_led.h"
 #include "event_detection.h"
+#include "read_adc.h"
 
 #include <stdint.h>
 #include <string.h>
@@ -462,6 +463,10 @@ static void advertising_handle(void)
 			adv_counter = m_pbs.bdc_s.advertising_duration;
 			adv_on = true;
 		}
+		
+		// Read ADC test
+		float adc_voltage = read_adc_voltage();
+		//printf("adc_voltage:%f\r\n",adc_voltage); //gill reserved
   }
 }
 static void adv_timeout_handler(void * p_context)
@@ -1279,7 +1284,7 @@ int main(void)
 		adv_on = true;
 		adv_counter = ADVERTISING_DEFAULT_DURATION/ADVERTISING_TIMER_DURATION;
     APP_ERROR_CHECK(err_code);
-
+		read_adc_init();
 		button_led_init();
 		lis2dh12_init();
 		flash_data_set_init();
@@ -1294,7 +1299,8 @@ int main(void)
 				sensor_data_process();
 				advertising_handle();
 				button_led_process();
-        __WFI();			
+        __WFI();
+				
 //        power_manage();
     }
 }

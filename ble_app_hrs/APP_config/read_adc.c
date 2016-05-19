@@ -12,7 +12,7 @@
 #define SAMPLES_IN_BUFFER 1
 volatile uint8_t state = 1;
 
-static const nrf_drv_timer_t   m_timer = NRF_DRV_TIMER_INSTANCE(2);
+static const nrf_drv_timer_t   m_timer = NRF_DRV_TIMER_INSTANCE(3);
 static nrf_saadc_value_t       m_buffer_pool[2][SAMPLES_IN_BUFFER];
 static nrf_ppi_channel_t       m_ppi_channel;
 //static uint32_t                m_adc_evt_counter;
@@ -79,7 +79,8 @@ void saadc_init(void)
 {
     ret_code_t err_code;
     nrf_saadc_channel_config_t channel_config =
-            NRF_DRV_SAADC_DEFAULT_CHANNEL_CONFIG_SE(NRF_SAADC_INPUT_AIN0);
+          //  NRF_DRV_SAADC_DEFAULT_CHANNEL_CONFIG_SE(NRF_SAADC_INPUT_AIN0);
+				NRF_DRV_SAADC_DEFAULT_CHANNEL_CONFIG_SE(NRF_SAADC_INPUT_AIN6);
     err_code = nrf_drv_saadc_init(NULL, saadc_callback);
     APP_ERROR_CHECK(err_code);
 
@@ -106,7 +107,8 @@ void read_adc_init(void)
 float read_adc_voltage(void)
 {
 		float voltage;
-		voltage = (float) adc_value * 6 * 0.6 / 1024; 
+		voltage = (float) adc_value * 6 * 0.6 / 1024;
+		//voltage = (float) adc_value; 	
 		return voltage;
 }	
 

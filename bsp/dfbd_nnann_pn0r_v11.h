@@ -9,8 +9,8 @@
  * the file.
  *
  */
-//#ifndef PFBD_NNANN_PN0R_V11
-//#define PFBD_NNANN_PN0R_V11
+//#ifndef DFBD_NNANN_PN0R_V11
+//#define DFBD_NNANN_PN0R_V11
 
 // LEDs definitions for PCA10040
 #define LEDS_NUMBER    4
@@ -62,7 +62,7 @@
 
 #define BUTTONS_MASK   0x001E0000
 
-#define RX_PIN_NUMBER  23
+#define RX_PIN_NUMBER  24
 #define TX_PIN_NUMBER  24
 #define CTS_PIN_NUMBER 7
 #define RTS_PIN_NUMBER 5
