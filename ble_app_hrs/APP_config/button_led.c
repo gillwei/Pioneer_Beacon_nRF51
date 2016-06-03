@@ -21,30 +21,38 @@ int button_releasing_counter = 0;
 int g_led_on_countdown = 0;
 
 #define CONFIRMATION_PATTERN_LENGTH	9
-uint8_t g_led_pattern_confirmation[CONFIRMATION_PATTERN_LENGTH] = {1, 1, 1, 0, 0, 0, 0, 0, 0};
+//uint8_t g_led_pattern_confirmation[CONFIRMATION_PATTERN_LENGTH] = {1, 1, 1, 0, 0, 0, 0, 0, 0};
+uint8_t g_led_pattern_confirmation[CONFIRMATION_PATTERN_LENGTH] = {0, 0, 0, 1, 1, 1, 1, 1, 1};
 uint8_t g_led_pattern_confirmation_ptr = 0;
 uint16_t g_led_pattern_confirmation_cnt = 0;
 
 #define PUSH_PATTERN_LENGTH	3
-uint8_t r_led_pattern_push[CONFIRMATION_PATTERN_LENGTH] = {1, 0, 0};
+//uint8_t r_led_pattern_push[CONFIRMATION_PATTERN_LENGTH] = {1, 0, 0};
+uint8_t r_led_pattern_push[CONFIRMATION_PATTERN_LENGTH] = {0, 1, 1};
 uint8_t r_led_pattern_push_ptr = 0;
 uint16_t r_led_pattern_push_cnt = 0;
 
 #define L_ACCIDENT_PATTERN_LENGTH	3
-uint8_t r_led_pattern_L_accident[L_ACCIDENT_PATTERN_LENGTH] = {1, 0, 0};
+//uint8_t r_led_pattern_L_accident[L_ACCIDENT_PATTERN_LENGTH] = {1, 0, 0};
+uint8_t r_led_pattern_L_accident[L_ACCIDENT_PATTERN_LENGTH] = {0, 1, 1};
 uint8_t r_led_pattern_L_accident_ptr = 0;
 uint16_t r_led_pattern_L_accident_cnt = 0;
 
 #define M_ACCIDENT_PATTERN_LENGTH	9
-uint8_t r_led_pattern_M_accident[M_ACCIDENT_PATTERN_LENGTH] = {1, 1, 1, 0, 0, 0, 0, 0, 0};
+//uint8_t r_led_pattern_M_accident[M_ACCIDENT_PATTERN_LENGTH] = {1, 1, 1, 0, 0, 0, 0, 0, 0};
+uint8_t r_led_pattern_M_accident[M_ACCIDENT_PATTERN_LENGTH] = {0, 0, 0, 1, 1, 1, 1, 1, 1};
 uint8_t r_led_pattern_M_accident_ptr = 0;
 uint16_t r_led_pattern_M_accident_cnt = 0;
 
 #define S_ACCIDENT_PATTERN_LENGTH	40
-uint8_t r_led_pattern_S_accident[S_ACCIDENT_PATTERN_LENGTH] = {1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-																															 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-																															 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-																															 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};																															 
+//uint8_t r_led_pattern_S_accident[S_ACCIDENT_PATTERN_LENGTH] = {1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+//																															 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+//																															 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+//																															 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};				
+uint8_t r_led_pattern_S_accident[S_ACCIDENT_PATTERN_LENGTH] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+																															 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+																															 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+																															 1, 1, 1, 1, 1, 1, 1, 1, 1, 1};	
 uint8_t r_led_pattern_S_accident_ptr = 0;
 uint16_t r_led_pattern_S_accident_cnt = 0;
 
@@ -92,48 +100,48 @@ void timer1_event_handler(nrf_timer_event_t event_type, void* p_context)
 						
 						if (g_led_on_countdown) {
 							if(--g_led_on_countdown)
-								nrf_drv_gpiote_out_clear(G_LED_PIN);
-							else
 								nrf_drv_gpiote_out_set(G_LED_PIN);
+							else
+								nrf_drv_gpiote_out_clear(G_LED_PIN);
 						} 
 						if (g_led_pattern_confirmation_cnt) {
-							if (--g_led_pattern_confirmation_cnt == 0) { nrf_drv_gpiote_out_set(G_LED_PIN); break; } 
+							if (--g_led_pattern_confirmation_cnt == 0) { nrf_drv_gpiote_out_clear(G_LED_PIN); break; } 
 							if (g_led_pattern_confirmation[g_led_pattern_confirmation_ptr++])
-								nrf_drv_gpiote_out_clear(G_LED_PIN);
-							else
 								nrf_drv_gpiote_out_set(G_LED_PIN);
+							else
+								nrf_drv_gpiote_out_clear(G_LED_PIN);
 							if (g_led_pattern_confirmation_ptr==CONFIRMATION_PATTERN_LENGTH) g_led_pattern_confirmation_ptr=0;
 						}
 						if (r_led_pattern_push_cnt) {
-							if (--r_led_pattern_push_cnt == 0) { nrf_drv_gpiote_out_set(R_LED_PIN); break; } 
+							if (--r_led_pattern_push_cnt == 0) { nrf_drv_gpiote_out_clear(R_LED_PIN); break; } 
 							if (r_led_pattern_push[r_led_pattern_push_ptr++])
-								nrf_drv_gpiote_out_clear(R_LED_PIN);
-							else
 								nrf_drv_gpiote_out_set(R_LED_PIN);
+							else
+								nrf_drv_gpiote_out_clear(R_LED_PIN);
 							if (r_led_pattern_push_ptr==PUSH_PATTERN_LENGTH) r_led_pattern_push_ptr=0;
 						}
 						if (r_led_pattern_L_accident_cnt) {
-							if (--r_led_pattern_L_accident_cnt == 0) { nrf_drv_gpiote_out_set(R_LED_PIN); break; } 
+							if (--r_led_pattern_L_accident_cnt == 0) { nrf_drv_gpiote_out_clear(R_LED_PIN); break; } 
 							if (r_led_pattern_L_accident[r_led_pattern_L_accident_ptr++])
-								nrf_drv_gpiote_out_clear(R_LED_PIN);
-							else
 								nrf_drv_gpiote_out_set(R_LED_PIN);
+							else
+								nrf_drv_gpiote_out_clear(R_LED_PIN);
 							if (r_led_pattern_L_accident_ptr==L_ACCIDENT_PATTERN_LENGTH) r_led_pattern_L_accident_ptr=0;
 						}	
 						if (r_led_pattern_M_accident_cnt) {
-							if (--r_led_pattern_M_accident_cnt == 0) { nrf_drv_gpiote_out_set(R_LED_PIN); break; } 
+							if (--r_led_pattern_M_accident_cnt == 0) { nrf_drv_gpiote_out_clear(R_LED_PIN); break; } 
 							if (r_led_pattern_M_accident[r_led_pattern_M_accident_ptr++])
-								nrf_drv_gpiote_out_clear(R_LED_PIN);
-							else
 								nrf_drv_gpiote_out_set(R_LED_PIN);
+							else
+								nrf_drv_gpiote_out_clear(R_LED_PIN);
 							if (r_led_pattern_M_accident_ptr==M_ACCIDENT_PATTERN_LENGTH) r_led_pattern_M_accident_ptr=0;
 						}
 						if (r_led_pattern_S_accident_cnt) {
-							if (--r_led_pattern_S_accident_cnt == 0) { nrf_drv_gpiote_out_set(R_LED_PIN); break; } 
+							if (--r_led_pattern_S_accident_cnt == 0) { nrf_drv_gpiote_out_clear(R_LED_PIN); break; } 
 							if (r_led_pattern_S_accident[r_led_pattern_S_accident_ptr++])
-								nrf_drv_gpiote_out_clear(R_LED_PIN);
-							else
 								nrf_drv_gpiote_out_set(R_LED_PIN);
+							else
+								nrf_drv_gpiote_out_clear(R_LED_PIN);
 							if (r_led_pattern_S_accident_ptr==S_ACCIDENT_PATTERN_LENGTH) r_led_pattern_S_accident_ptr=0;
 						}						
             break;
@@ -249,7 +257,7 @@ void button_led_init(void)
     nrf_drv_timer_enable(&TIMER_GPIO);	
 		
 		//Turn off LEDs
-		nrf_gpio_pin_set(R_LED_PIN);
-		nrf_gpio_pin_set(G_LED_PIN);
+		//nrf_gpio_pin_set(R_LED_PIN);
+		//nrf_gpio_pin_set(G_LED_PIN);
 }
 

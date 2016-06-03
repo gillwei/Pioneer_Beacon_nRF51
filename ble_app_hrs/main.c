@@ -75,7 +75,7 @@
 #define CENTRAL_LINK_COUNT               0                                          /**<number of central links used by the application. When changing this number remember to adjust the RAM settings*/
 #define PERIPHERAL_LINK_COUNT            1                                          /**<number of peripheral links used by the application. When changing this number remember to adjust the RAM settings*/
 
-#define DEVICE_NAME                      "BLE_PBS_V0_2"                               /**< Name of device. Will be included in the advertising data. */
+#define DEVICE_NAME                      "BLE_PBS_V0_3"                               /**< Name of device. Will be included in the advertising data. */
 
 #define APP_ADV_TIMEOUT_IN_SECONDS       180000                                        /**< The advertising timeout in units of seconds. */
 
@@ -188,13 +188,14 @@ static ble_dfu_t                         m_dfus;                                
 
 //Gill Add 20160314
 #define MAIN_DEBUG											1 
-
+#define ACC_THRESHOLD                   200
 
 static void advertising_init(uint16_t);
 static uint16_t pktCounter = 0; // need change to variable
 static uint16_t pktCounterCopy;
 static uint16_t adv_counter = 0;
 static bool 		adv_on = false;
+static uint16_t previous_acc_voltage = 0;
 //static uint16_t totalPktNum;
 //static uint8_t p_cal_encoded_buffer_prepare[20] = {0};
 // Button LED status
@@ -202,6 +203,8 @@ extern int g_led_on_countdown;  // Long push triggered
 extern uint16_t r_led_pattern_push_cnt; // Short push triggered
 extern float offset_xyz[3];
 static bool short_push_flag = false;
+extern void bsc_data_encode(uint8_t*,const bsc_t * );
+//static bool acc_on = false;
 //static bool                             m_pbs_esc_ind_conf_pending = false;  
 
 /**@brief Callback function for asserts in the SoftDevice.
@@ -287,7 +290,7 @@ static void cal_data_timeout_handler(void * p_context)
 
 static void sensor_data_process(void)
 {
-    if (sensor_data_process_trigger)
+		if (sensor_data_process_trigger)
 	{
 		sensor_data_process_trigger = false;
 		uint32_t err_code;
@@ -316,7 +319,7 @@ static void sensor_data_process(void)
 		
 		uint8_t inPktNum=0; //for 4 packet in one notify
 		//printf("cdrc_notify_flag:%i,conn:%04X\r\n",cdrc_notify_flag,m_conn_handle);
-		//if (ret > 0 && m_conn_handle != BLE_CONN_HANDLE_INVALID && cdrc_notify_flag== true)  // for test
+		//if (ret > 0 && m_conn_handle != BLE_CONN_HANDLE_INVALID && cdrc_notify_flag== true)	// for test
 		if(m_conn_handle != BLE_CONN_HANDLE_INVALID && drhc_notify_flag && cdrc_notify_flag)
 		{
 			ret = flash_data_set_read(&r_xy, &r_z, &cal_r_xy, &cal_r_z, &r_event_ID, &r_UTC, &r_sensor_interval);
@@ -337,7 +340,7 @@ static void sensor_data_process(void)
 					// Send Data Header, use pktCounterCopy check if pktCounter recount 
 					// in case that pktCounter miss the first one packet
 					// Send Data Header
-					if (pktCounter > pktCounterCopy)  
+					if (pktCounter > pktCounterCopy)	
 					{
 						uint32_t tempUTC = UTC_get();
 						uint8_t p_tempUTC[4]; 
@@ -428,6 +431,24 @@ static void sensor_data_process(void)
  */
 static void advertising_handle(void)
 {
+	if (advertising_trigger && m_conn_handle != BLE_CONN_HANDLE_INVALID)
+	{
+	// Check if ACC Status Change
+		// Turn On or Off
+		uint16_t read_acc_in_process = read_adc_int();
+		
+		if ((previous_acc_voltage > ACC_THRESHOLD && read_acc_in_process < ACC_THRESHOLD) || (previous_acc_voltage < ACC_THRESHOLD && read_acc_in_process > ACC_THRESHOLD))
+		{
+			printf("previous_acc_voltage:%d,read_acc_in_process:%d",previous_acc_voltage,read_acc_in_process);
+			printf("\r\nupdate acc_voltage\r\n");
+			m_pbs.bsc_s.acc_voltage = read_acc_in_process;
+			uint8_t encoded_bsc_data [13]; //BSC_DATA_LENGTH
+			bsc_data_encode(encoded_bsc_data, &m_pbs.bsc_s);
+			ble_pbs_bsc_update(&m_pbs,encoded_bsc_data);
+			previous_acc_voltage = read_acc_in_process;
+		}
+	}
+	
 	if (advertising_trigger && m_conn_handle == BLE_CONN_HANDLE_INVALID)
 	{
 		advertising_trigger = false;
@@ -465,8 +486,10 @@ static void advertising_handle(void)
 		}
 		
 		// Read ADC test
-		float adc_voltage = read_adc_voltage();
-		//printf("adc_voltage:%f\r\n",adc_voltage); //gill reserved
+//		float adc_voltage = read_adc_voltage();
+//	 uint16_t adc_value_int = read_adc_int();
+//		float adc_app_value = adc_value_int * 6 * 0.6 / 1024;
+//		printf("adc_voltage:%f,int:%d,app_value:%f\r\n",adc_voltage,adc_value_int,adc_app_value); 
   }
 }
 static void adv_timeout_handler(void * p_context)
@@ -478,10 +501,14 @@ static void adv_timeout_handler(void * p_context)
 //static int test = 0;
 extern void bdrc_data_encode(uint8_t*,const bdrc_t * );
 
+
+// Acquire ACC voltage temporarily here
 static void button_led_process(void)
 {
 	if (button_led_trigger)
 	{
+		
+		
 		// Check Button Push Status
 		button_led_trigger = false;
 		uint32_t err_code;
@@ -790,8 +817,8 @@ static void services_init(void)
 		m_pbs.bsc_s.ble_output_power = -8;
 		m_pbs.bsc_s.current_utc = 0;
 		m_pbs.bsc_s.ambient_sensor_value = 0;
-		m_pbs.bsc_s.acc_voltage = 0;
-
+		m_pbs.bsc_s.acc_voltage = read_adc_int();
+		previous_acc_voltage = read_adc_int();
 		// Event Storage Characteristic default value
 		m_pbs.esc_s.download_control_point = 0x00;
 		m_pbs.esc_s.number_of_event = 0x00;

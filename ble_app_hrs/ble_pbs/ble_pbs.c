@@ -36,6 +36,7 @@
 #include "button_led.h"
 #include "nrf_delay.h"
 #include "event_detection.h"
+#include "read_adc.h"
 
 //15422fe0-bce5-11e5-a837-0800200c9a66
 #define PBS_UUID_BASE 										 {0x66,0x9A,0x0C,0x20,0x00,0x08,0x37,0xA8,0xE5,0x11,0xE5,0xBC,0xE0,0x2F,0x42,0x15}
@@ -101,7 +102,8 @@ static void tsc_data_encode(uint8_t * p_encoded_buffer, const tsc_t * p_tsc)
 		len += uint16_big_encode(p_tsc->hard_steering_level_right, &p_encoded_buffer[len]);
 }
 
-static void bsc_data_encode(uint8_t * p_encoded_buffer, const bsc_t * p_bsc)
+// Beacon setting not const
+void bsc_data_encode(uint8_t * p_encoded_buffer,  const bsc_t * p_bsc)
 {
 		uint8_t len = 0;
 		APP_ERROR_CHECK_BOOL(p_bsc != NULL);
@@ -237,6 +239,7 @@ static void bsc_data_process(const uint8_t * p_encoded_buffer, bsc_t * p_bsc)
 		p_bsc->current_utc = tempUTC;
 		printf("UTC:%08X\r\n",tempUTC);
 	}
+	
 }
 static void bdc_data_decode(const uint8_t * p_encoded_buffer, bdc_t * p_bdc)
 {
@@ -316,6 +319,53 @@ static void on_disconnect(ble_pbs_t * p_pbs, ble_evt_t * p_ble_evt)
 	p_pbs->conn_handle = BLE_CONN_HANDLE_INVALID;
 }
 
+uint32_t ble_pbs_bsc_update(ble_pbs_t * p_pbs, uint8_t *bsc_data)
+{
+    if (p_pbs == NULL)
+    {
+        return NRF_ERROR_NULL;
+    }
+    
+    uint32_t err_code = NRF_SUCCESS;
+    ble_gatts_value_t gatts_value;
+		
+		// Initialize value struct.
+		memset(&gatts_value, 0, sizeof(gatts_value));
+
+		gatts_value.len     = BSC_ALLDATA_LENGTH;
+		gatts_value.offset  = 0;
+		gatts_value.p_value = bsc_data;
+
+		// Update database.
+		err_code = sd_ble_gatts_value_set(p_pbs->conn_handle,
+																			p_pbs->bsc_handles.value_handle,
+																			&gatts_value);
+#if PBS_DEBUG
+		printf("set value err:%04X\r\n",err_code);
+#endif
+		// Send value if connected and notifying.
+		//if ((p_bas->conn_handle != BLE_CONN_HANDLE_INVALID) && p_bas->is_notification_supported)
+		if (p_pbs->conn_handle != BLE_CONN_HANDLE_INVALID)
+		{
+				ble_gatts_hvx_params_t hvx_params;
+
+				memset(&hvx_params, 0, sizeof(hvx_params));
+
+				hvx_params.handle = p_pbs->bsc_handles.value_handle;
+				hvx_params.type   = BLE_GATT_HVX_INDICATION;
+				//hvx_params.type   =  BLE_GATT_HVX_NOTIFICATION;
+				hvx_params.offset = gatts_value.offset;
+				hvx_params.p_len  = &gatts_value.len;
+				hvx_params.p_data = gatts_value.p_value;
+
+				err_code = sd_ble_gatts_hvx(p_pbs->conn_handle, &hvx_params);
+#if PBS_DEBUG
+			printf("indicate value err:%04X\r\n",err_code);
+#endif
+		}
+    return err_code;
+}
+
 uint32_t ble_pbs_drhc_update(ble_pbs_t * p_pbs, uint8_t *drhc_data)
 {
     if (p_pbs == NULL)
@@ -367,6 +417,7 @@ uint32_t ble_pbs_drhc_update(ble_pbs_t * p_pbs, uint8_t *drhc_data)
 //		}
     return err_code;
 }
+
 uint32_t ble_pbs_esc_update(ble_pbs_t * p_pbs, uint8_t* esc_data)
 {
     if (p_pbs == NULL)

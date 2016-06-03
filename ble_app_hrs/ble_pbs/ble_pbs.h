@@ -54,7 +54,7 @@ typedef struct
 	// Value Setting 
 	int16_t sampling_frequency;
 	int16_t ambient_sensor_value;
-	int16_t acc_voltage;
+	uint16_t acc_voltage;
 	int16_t ble_output_power;
 	uint32_t current_utc;
 }bsc_t;
@@ -193,6 +193,7 @@ struct ble_pbs_s
  */
 uint32_t ble_pbs_init(ble_pbs_t * p_pbs);
 
+uint32_t ble_pbs_bsc_update(ble_pbs_t * p_pbs, uint8_t *bsc_data);
 uint32_t ble_pbs_esc_update(ble_pbs_t * p_pbs, uint8_t *esc_data);
 uint32_t ble_pbs_drhc_update(ble_pbs_t * p_pbs, uint8_t *dhrc_data);
 uint32_t ble_pbs_cdrc_update(ble_pbs_t * p_pbs, uint8_t *cdrc_data);
