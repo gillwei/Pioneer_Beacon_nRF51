@@ -7,10 +7,10 @@
 #include "nrf_drv_timer.h"
 const nrf_drv_timer_t TIMER_GPIO = NRF_DRV_TIMER_INSTANCE(1);
 
-#define G_LED_PIN				25
-#define R_LED_PIN				26
-#define BUTTON_1stPIN		27
-#define BUTTON_2ndPIN		28
+//#define G_LED_PIN				25
+//#define R_LED_PIN				26
+//#define BUTTON_1stPIN		27
+//#define BUTTON_2ndPIN		28
 #define TIMER1_TICK_MS	50
 
 uint32_t UTC = 0;
@@ -225,13 +225,14 @@ void button_led_init(void)
 {
     ret_code_t err_code;
 
-//    err_code = nrf_drv_gpiote_init();//Tsungta this is already be called somewhere else, call twice will cause failure 
+    err_code = nrf_drv_gpiote_init();//Tsungta this is already be called somewhere else, call twice will cause failure 
     APP_ERROR_CHECK(err_code);
     
     nrf_drv_gpiote_out_config_t out_config = GPIOTE_CONFIG_OUT_SIMPLE(false);
 
-    err_code = nrf_drv_gpiote_out_init(R_LED_PIN, &out_config);
-		err_code = nrf_drv_gpiote_out_init(G_LED_PIN, &out_config);
+    err_code = nrf_drv_gpiote_out_init(G_LED_PIN, &out_config);
+	  APP_ERROR_CHECK(err_code);
+		err_code = nrf_drv_gpiote_out_init(R_LED_PIN, &out_config);
     APP_ERROR_CHECK(err_code);
 
     nrf_drv_gpiote_in_config_t button_LtoH_config = GPIOTE_CONFIG_IN_SENSE_LOTOHI(true);

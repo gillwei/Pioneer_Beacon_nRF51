@@ -75,7 +75,7 @@
 #define CENTRAL_LINK_COUNT               0                                          /**<number of central links used by the application. When changing this number remember to adjust the RAM settings*/
 #define PERIPHERAL_LINK_COUNT            1                                          /**<number of peripheral links used by the application. When changing this number remember to adjust the RAM settings*/
 
-#define DEVICE_NAME                      "BLE_PBS_V0_3"                               /**< Name of device. Will be included in the advertising data. */
+#define DEVICE_NAME                      "BLE_PBS_V03_1"                               /**< Name of device. Will be included in the advertising data. */
 
 #define APP_ADV_TIMEOUT_IN_SECONDS       180000                                        /**< The advertising timeout in units of seconds. */
 
@@ -681,8 +681,8 @@ static void advertising_stop(void)
     err_code = sd_ble_gap_adv_stop();
     APP_ERROR_CHECK(err_code);
 
-    err_code = bsp_indication_set(BSP_INDICATE_IDLE);
-    APP_ERROR_CHECK(err_code);
+    //err_code = bsp_indication_set(BSP_INDICATE_IDLE);
+    //APP_ERROR_CHECK(err_code);
 }
 
 
@@ -752,8 +752,8 @@ static void reset_prepare(void)
         // Disconnect from peer.
         err_code = sd_ble_gap_disconnect(m_conn_handle, BLE_HCI_REMOTE_USER_TERMINATED_CONNECTION);
         APP_ERROR_CHECK(err_code);
-        err_code = bsp_indication_set(BSP_INDICATE_IDLE);
-        APP_ERROR_CHECK(err_code);
+        //err_code = bsp_indication_set(BSP_INDICATE_IDLE);
+        //APP_ERROR_CHECK(err_code);
     }
     else
     {
@@ -962,8 +962,9 @@ static void conn_params_init(void)
  */
 static void sleep_mode_enter(void)
 {
-    uint32_t err_code = bsp_indication_set(BSP_INDICATE_IDLE);
-    APP_ERROR_CHECK(err_code);
+		uint32_t err_code;
+    //uint32_t err_code = bsp_indication_set(BSP_INDICATE_IDLE);
+    //APP_ERROR_CHECK(err_code);
 
     // Prepare wakeup buttons.
     err_code = bsp_btn_ble_sleep_mode_prepare();
@@ -989,8 +990,8 @@ static void on_adv_evt(ble_adv_evt_t ble_adv_evt)
     {
         case BLE_ADV_EVT_FAST:
 						printf("BLE_ADV_EVT_FAST\r\n");
-						err_code = bsp_indication_set(BSP_INDICATE_ADVERTISING);
-						APP_ERROR_CHECK(err_code);
+						//err_code = bsp_indication_set(BSP_INDICATE_ADVERTISING);
+						//APP_ERROR_CHECK(err_code);
 						if (short_push_flag == true)
 						{
 							adv_on = true;
@@ -1024,8 +1025,8 @@ static void on_ble_evt(ble_evt_t * p_ble_evt)
     switch (p_ble_evt->header.evt_id)
             {
         case BLE_GAP_EVT_CONNECTED:
-            err_code = bsp_indication_set(BSP_INDICATE_CONNECTED);
-            APP_ERROR_CHECK(err_code);
+            //err_code = bsp_indication_set(BSP_INDICATE_CONNECTED);
+            //APP_ERROR_CHECK(err_code);
             m_conn_handle = p_ble_evt->evt.gap_evt.conn_handle;
 						printf("on_ble_Connected");
 						adv_on = false;
@@ -1255,20 +1256,20 @@ static void advertising_init(uint16_t advertising_interval_u16)
  *
  * @param[out] p_erase_bonds  Will be true if the clear bonding button was pressed to wake the application up.
  */
-static void buttons_leds_init(bool * p_erase_bonds)
-{
-    bsp_event_t startup_event;
+//static void buttons_leds_init(bool * p_erase_bonds)
+//{
+//    bsp_event_t startup_event;
 
-    uint32_t err_code = bsp_init(BSP_INIT_LED | BSP_INIT_BUTTONS,
-                                 APP_TIMER_TICKS(100, APP_TIMER_PRESCALER),
-                                 bsp_event_handler);
-    APP_ERROR_CHECK(err_code);
+//    uint32_t err_code = bsp_init(BSP_INIT_LED | BSP_INIT_BUTTONS,
+//                                 APP_TIMER_TICKS(100, APP_TIMER_PRESCALER),
+//                                 bsp_event_handler);
+//    APP_ERROR_CHECK(err_code);
 
-    err_code = bsp_btn_ble_init(NULL, &startup_event);
-    APP_ERROR_CHECK(err_code);
+//    err_code = bsp_btn_ble_init(NULL, &startup_event);
+//    APP_ERROR_CHECK(err_code);
 
-    *p_erase_bonds = (startup_event == BSP_EVENT_CLEAR_BONDING_DATA);
-}
+//    *p_erase_bonds = (startup_event == BSP_EVENT_CLEAR_BONDING_DATA);
+//}
 
 
 /**@brief Function for the Power manager.
@@ -1291,7 +1292,7 @@ int main(void)
 		uart_init();
     app_trace_init();
     timers_init();
-    buttons_leds_init(&erase_bonds);
+    //buttons_leds_init(&erase_bonds);
     ble_stack_init();
     device_manager_init(erase_bonds);
     gap_params_init();
