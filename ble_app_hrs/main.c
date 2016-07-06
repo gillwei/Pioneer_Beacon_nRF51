@@ -75,7 +75,7 @@
 #define CENTRAL_LINK_COUNT               0                                          /**<number of central links used by the application. When changing this number remember to adjust the RAM settings*/
 #define PERIPHERAL_LINK_COUNT            1                                          /**<number of peripheral links used by the application. When changing this number remember to adjust the RAM settings*/
 
-#define DEVICE_NAME                      "BLE_PBS_V03_1"                               /**< Name of device. Will be included in the advertising data. */
+#define DEVICE_NAME                      "BLE_PBS_V04"                               /**< Name of device. Will be included in the advertising data. */
 
 #define APP_ADV_TIMEOUT_IN_SECONDS       180000                                        /**< The advertising timeout in units of seconds. */
 
@@ -189,6 +189,9 @@ static ble_dfu_t                         m_dfus;                                
 //Gill Add 20160314
 #define MAIN_DEBUG											1 
 #define ACC_THRESHOLD                   200
+#define FLASH_ENCRYPT 								  1
+
+static const uint8_t lock_ary[6] = {0x77,0x77,0x00,0x55,0x11,0x99};
 
 static void advertising_init(uint16_t);
 static uint16_t pktCounter = 0; // need change to variable
@@ -451,6 +454,19 @@ static void advertising_handle(void)
 	
 	if (advertising_trigger && m_conn_handle == BLE_CONN_HANDLE_INVALID)
 	{
+		uint16_t read_acc_in_process = read_adc_int();
+		printf("previous_acc_voltage:%d,read_acc_in_process:%d",previous_acc_voltage,read_acc_in_process);
+		if ((previous_acc_voltage > ACC_THRESHOLD && read_acc_in_process < ACC_THRESHOLD) || (previous_acc_voltage < ACC_THRESHOLD && read_acc_in_process > ACC_THRESHOLD))
+		{
+			printf("previous_acc_voltage:%d,read_acc_in_process:%d",previous_acc_voltage,read_acc_in_process);
+			printf("\r\nupdate acc_voltage\r\n");
+			m_pbs.bsc_s.acc_voltage = read_acc_in_process;
+			uint8_t encoded_bsc_data [13]; //BSC_DATA_LENGTH
+			bsc_data_encode(encoded_bsc_data, &m_pbs.bsc_s);
+			ble_pbs_bsc_update(&m_pbs,encoded_bsc_data);
+			previous_acc_voltage = read_acc_in_process;
+		}
+		
 		advertising_trigger = false;
 		uint32_t err_code;
 		
@@ -844,8 +860,8 @@ static void services_init(void)
 		
 //		m_pbs.bdc_s.advertising_period = ADVERTISING_DEFAULT_PERIOD/ADVERTISING_TIMER_DURATION; 
 //		m_pbs.bdc_s.advertising_duration = ADVERTISING_DEFAULT_DURATION/ADVERTISING_TIMER_DURATION; 
-		m_pbs.bdc_s.advertising_period = 20;
-		m_pbs.bdc_s.advertising_duration = 10;
+		m_pbs.bdc_s.advertising_period = 64;
+		m_pbs.bdc_s.advertising_duration = 4; // Maximum 10 secs
 		m_pbs.bdc_s.bdc_advertising_interval = 100;
 		
 		m_pbs.bdrc_s.advertising_time = 5;
@@ -1280,6 +1296,44 @@ static void advertising_init(uint16_t advertising_interval_u16)
 //    APP_ERROR_CHECK(err_code);
 //}
 
+/**@brief Function for flash encryption and check.
+ *
+ * @note Not return if encryption check not success
+ */
+static void flash_encrypt_check(void)
+{
+		uint32_t flash_test_data = 0;
+		uint32_t flash_test_data2 = 0;
+		uint32_t start_address = 0;
+		ble_gap_addr_t ble_addr;
+		uint32_t errCode = sd_ble_gap_address_get(&ble_addr);
+		uint8_t code_ary[8] = {0};
+		uint8_t len = 0;
+		for (uint8_t i=0;i<6;i++)
+		{
+			code_ary[i] = lock_ary[i] & ble_addr.addr[5-i];
+		}
+		code_ary[6] = 0;
+		code_ary[7] = 0;
+		uint32_t temp_flash_data = 0;
+		temp_flash_data = uint32_big_decode(code_ary);
+#if FLASH_ENCRYPT
+		flash_page_erase((uint32_t*)start_address);
+		flash_word_write((uint32_t*)start_address,temp_flash_data);
+#endif
+		flash_test_data = flash_word_read((uint32_t *)start_address);
+		temp_flash_data = uint32_big_decode(code_ary+4);
+		start_address += 1000; // maybe need multiplicant of 1000
+#if FLASH_ENCRYPT
+		flash_word_write((uint32_t*)start_address,temp_flash_data);
+#endif
+		flash_test_data2 = flash_word_read((uint32_t *)start_address);
+		if (flash_test_data == uint32_big_decode(code_ary) && flash_test_data2 == uint32_big_decode(code_ary+4))
+			{}
+		else
+			while(1){};
+}
+
 
 /**@brief Function for application main entry.
  */
@@ -1316,6 +1370,7 @@ int main(void)
 		button_led_init();
 		lis2dh12_init();
 		flash_data_set_init();
+		flash_encrypt_check();  // No return if check error
 //		uart_init();
 		event_sampling_interval_set(1000/DEFAULT_HZ);//set default 20 (50Hz) here
 		nrf_delay_ms(1000);//application system warm up time
